@@ -1,5 +1,22 @@
 FUSE forntend for tokyo cabinet
 
+
+INSTALL:
+	make
+
+USAGE:
+	./tokyofuse /tokyo/
+
+	ls /tokyo/ will point to root directory (/)
+	and any file that ends with .tc will become a directory with tc keys as files
+
+	i.e
+
+	if you have /archive1/baba.tc
+	and you do ./tokyofuse /tokyo
+
+	then /tokyo/archive1/baba/ <- is a directory
+
 supported features: 
 	readdir
 	getattr
