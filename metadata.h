@@ -28,5 +28,6 @@ tc_dir_meta_t *lookup_path(const char *);
 tc_file_meta_t *lookup_file(tc_dir_meta_t *, const char *);
 int meta_filesize(const char *);
 int tc_filesize(const char *);
+char *tc_value(const char *);
 
 #endif

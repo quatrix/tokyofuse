@@ -4,6 +4,7 @@
 #include <tap.h>
 #include "utils.h"
 #include "tc.h"
+#include "metadata.h"
 
 int main(int argc, char **argv)
 {
@@ -42,7 +43,9 @@ int main(int argc, char **argv)
 	ok(s == NULL, "null path returns null tc path");
 
 
+	s = tc_value("/archive1/FFF/02B");
 
+	printf("%s", s);
 
 	return EXIT_SUCCESS;
 }

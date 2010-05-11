@@ -1,0 +1,8 @@
+FUSE forntend for tokyo cabinet
+
+supported features: 
+	readdir
+	getattr
+	open
+	close
+	read
