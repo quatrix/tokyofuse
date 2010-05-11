@@ -1,0 +1,5 @@
+*.swa
+*.swp
+*.o
+testsuite
+tokyofuse
