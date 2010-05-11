@@ -28,6 +28,9 @@ tc_dir_meta_t *lookup_path(const char *);
 tc_file_meta_t *lookup_file(tc_dir_meta_t *, const char *);
 int meta_filesize(const char *);
 int tc_filesize(const char *);
-char *tc_value(const char *);
+char *tc_value(const char *, int *);
+bool tc_file_cb(const void *, int , const void *, int , void *);
+void print_file_hash(tc_file_meta_t *);
+void baba(const char *, size_t, tc_dir_meta_t *); 
 
 #endif

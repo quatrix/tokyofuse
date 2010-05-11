@@ -34,10 +34,7 @@ tc_dir_meta_t *add_path(const char *path)
 {
 	TCHDB *hdb;
 	tc_dir_meta_t *tc_dir = NULL;
-	tc_file_meta_t *tc_file = NULL;
-	int ecode, size;
-	char *key;
-	size_t key_len;
+	int ecode;
 
 	fprintf(stderr, "adding %s to metadata hash\n", path);
 
@@ -71,9 +68,9 @@ tc_dir_meta_t *add_path(const char *path)
 
 	char *tc_path = to_tc_path(path);
 
-	if(!tchdbopen(hdb, tc_path, HDBOREADER | HDBONOLCK )) {
+	if(!tchdbopen(hdb, tc_path, HDBOREADER  )) {
 		ecode = tchdbecode(hdb);
-		fprintf(stderr, "open error: %s\n", tchdberrmsg(ecode));
+		fprintf(stderr, "add_path open error: %s\n", tchdberrmsg(ecode));
 		free(tc_path);
 		pthread_rwlock_unlock(&tc_lock);
 		return NULL;
@@ -81,33 +78,15 @@ tc_dir_meta_t *add_path(const char *path)
 
 	free(tc_path);
 
-	if (!tchdbiterinit(hdb)) {
+	if (!tchdbforeach(hdb, tc_file_cb, tc_dir)) {
 		ecode = tchdbecode(hdb);
-		fprintf(stderr, "iterinit error: %s\n", tchdberrmsg(ecode));
+		fprintf(stderr, "foreach error: %s\n", tchdberrmsg(ecode));
 		pthread_rwlock_unlock(&tc_lock);
 		return NULL;
 	}
 
-	while ((key = tchdbiternext2(hdb)) != NULL) {
-		key_len = strlen(key);
-		tc_file = (tc_file_meta_t *)malloc(sizeof(tc_file_meta_t));
-
-		if (tc_file == NULL) {
-			pthread_rwlock_unlock(&tc_lock);
-			return NULL;
-		}
-
-		size = tchdbvsiz(hdb, key, key_len);
-
-		if (size == -1) {
-			ecode = tchdbecode(hdb);
-			fprintf(stderr, "vsize error: %s\n", tchdberrmsg(ecode));
-		}
-
-		tc_file->path = key;
-		tc_file->size = size;
-		HASH_ADD_KEYPTR( hh, tc_dir->files, key, key_len, tc_file );
-	}
+	//print_file_hash(tc_dir->files);
+	
 
 	if(!tchdbclose(hdb)) {
 		ecode = tchdbecode(hdb);
@@ -129,6 +108,30 @@ tc_dir_meta_t *add_path(const char *path)
 	return tc_dir;
 }
 
+bool tc_file_cb(const void *key, int ksiz, const void *vbuf, int vsiz, void *tc_dm)
+{
+
+		tc_file_meta_t *tc_file = NULL;
+		tc_dir_meta_t *tc_dir = (tc_dir_meta_t *)tc_dm;
+
+		tc_file = (tc_file_meta_t *)malloc(sizeof(tc_file_meta_t));
+
+		if (tc_file == NULL) {
+			fprintf(stderr, "can't allocate memory for new tc_file\n");
+			return false;
+		}
+
+		tc_file->path = strndup(key,ksiz);
+		tc_file->size = vsiz;
+
+		//fprintf(stderr, "IN CALLBACK %s (ksiz: %d) %d\n", tc_file->path, ksiz, tc_file->size);
+
+		HASH_ADD_KEYPTR( hh, tc_dir->files, tc_file->path, ksiz , tc_file );
+
+		return true;
+}
+
+
 tc_dir_meta_t *lookup_path(const char *path) 
 {
 	fprintf(stderr, "looking up %s\n", path);
@@ -139,7 +142,6 @@ tc_dir_meta_t *lookup_path(const char *path)
 		return NULL;
 	}
 	HASH_FIND_STR( meta, path, tc_dir );  
-	//HASH_FIND(hh, meta, path, strlen(path), tc_dir);
 	pthread_rwlock_unlock(&meta_lock);
 
 	if (tc_dir != NULL)
@@ -173,11 +175,12 @@ int meta_filesize(const char *path)
 
 	tc_file = lookup_file(tc_dir, leaf);
 	
-	if (tc_file == NULL)
+	if (tc_file == NULL) {
+		fprintf(stderr, "can't find meta file %s\n",leaf);
 		return -1;
+	}
 	
 	return tc_file->size;
-
 }
 
 int tc_filesize(const char *path)
@@ -202,9 +205,10 @@ int tc_filesize(const char *path)
 		return -errno;
 	}
 
-	if(!tchdbopen(hdb, tc_path, HDBOREADER | HDBONOLCK )) {
+
+	if(!tchdbopen(hdb, tc_path, HDBOREADER  )) {
 		ecode = tchdbecode(hdb);
-		fprintf(stderr, "open error: %s\n", tchdberrmsg(ecode));
+		fprintf(stderr, "tc_filesize: open error: %s\n", tchdberrmsg(ecode));
 		free(tc_path);
 		free(parent);
 		pthread_rwlock_unlock(&tc_lock);
@@ -232,7 +236,7 @@ int tc_filesize(const char *path)
 	return size;
 }
 
-char *tc_value(const char *path)
+char *tc_value(const char *path, int *value_len)
 {
 	TCHDB *hdb;
 	int ecode;
@@ -254,9 +258,9 @@ char *tc_value(const char *path)
 		return NULL;
 	}
 
-	if(!tchdbopen(hdb, tc_path, HDBOREADER | HDBONOLCK )) {
+	if(!tchdbopen(hdb, tc_path, HDBOREADER  )) {
 		ecode = tchdbecode(hdb);
-		fprintf(stderr, "open error: %s\n", tchdberrmsg(ecode));
+		fprintf(stderr, "tc_value open error: %s\n", tchdberrmsg(ecode));
 		free(tc_path);
 		free(parent);
 		pthread_rwlock_unlock(&tc_lock);
@@ -266,7 +270,8 @@ char *tc_value(const char *path)
 	free(tc_path);
 	free(parent);
 
-	value = tchdbget2(hdb, leaf);
+	value = tchdbget(hdb, leaf, strlen(leaf), value_len);
+
 	if (value == NULL) {
 		ecode = tchdbecode(hdb);
 		fprintf(stderr, "getvalue error: %s\n", tchdberrmsg(ecode));
@@ -324,4 +329,11 @@ void free_tc_dir(tc_dir_meta_t *tc_dir)
 
 		free(tc_dir);
 	}
+}
+
+void print_file_hash(tc_file_meta_t *tc_file)
+{
+	for(;tc_file != NULL; tc_file=tc_file->hh.next)
+		fprintf(stderr, "path: %s (%d) size: %d\n", tc_file->path, strlen(tc_file->path), tc_file->size);
+
 }

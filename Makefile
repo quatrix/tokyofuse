@@ -12,7 +12,7 @@ tc.o: tc.c tc.h
 	$(CC_O) tc.c -o tc.o
 
 metadata.o: metadata.c metadata.h
-	$(CC_O) metadata.c -o metadata.o
+	$(CC_O) -DHASH_DEBUG=1 metadata.c -o metadata.o
 
 testsuite: utils.o tc.o metadata.o testsuite.c
 	$(CC) -ltap -ltokyocabinet utils.o tc.o metadata.o testsuite.c -o testsuite

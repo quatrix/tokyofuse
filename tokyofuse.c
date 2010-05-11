@@ -37,6 +37,13 @@
 #include "metadata.h"
 
 
+struct tc_filehandle {
+	char *value;
+	int value_len;
+};
+
+typedef struct tc_filehandle tc_filehandle_t;
+
 pthread_rwlock_t tc_iter_lock;
 
 
@@ -290,15 +297,23 @@ static int xmp_utimens(const char *path, const struct timespec ts[2])
 static int xmp_open(const char *path, struct fuse_file_info *fi)
 {
 	int res;
-	char *value;
 
 	if (is_parent_tc(path)) { 
-		value = tc_value(path);
+		tc_filehandle_t *fh	= (tc_filehandle_t *)malloc(sizeof(tc_filehandle_t));
 
-		if (value == NULL)
+		if (fh == NULL) {
+			fprintf(stderr, "can't allocate memory for tc_filehandle\n");
 			return -errno;
+		}
 
-		fi->fh = (uintptr_t)value;
+		fh->value = tc_value(path, &fh->value_len);
+
+		if (fh->value == NULL) {
+			free(fh);
+			return -errno;
+		}
+
+		fi->fh = (uintptr_t)fh;
 	}
 	else {
 		res = open(path, fi->flags);
@@ -315,27 +330,27 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 {
 	int fd;
 	int res;
-	char *value;
-	size_t value_len;
+	tc_filehandle_t *fh;	
 
-	fprintf(stderr, "wants to read %d from %s (offset: %d)\n", size, path, offset);
+	//fprintf(stderr, "wants to read %d from %s (offset: %d)\n", size, path, offset);
 
 	if (is_parent_tc(path)) { 
-		value = (char *)(uintptr_t)fi->fh;
+		fh = (tc_filehandle_t *)(uintptr_t)fi->fh;
 
-		if (value == NULL)
+		if (fh == NULL)
 			return -errno;
 
-		value += offset;
+		if (fh->value == NULL)
+			return -errno;
 
-		value_len = strlen(value);
+		fh->value += offset;
 
-		if (value_len < size) {
-			strncpy(buf, value, value_len);
-			res = value_len;
+		if (fh->value_len < size) {
+			memcpy(buf, fh->value, fh->value_len);
+			res = fh->value_len;
 		}
 		else {
-			strncpy(buf, value, size);
+			memcpy(buf, fh->value, size);
 			res = size;
 		}
 	}
@@ -354,6 +369,25 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 	return res;
 }
 
+static int xmp_close(const char *path, char *buf, size_t size, off_t offset,
+		    struct fuse_file_info *fi)
+{
+	tc_filehandle_t *fh;	
+
+	if (is_parent_tc(path)) { 
+		fh = (tc_filehandle_t *)(uintptr_t)fi->fh;
+	
+		if (fh == NULL)
+			return -errno;
+
+		if (fh->value == NULL)
+			return -errno;
+
+		free(fh->value);
+	}
+
+	return 0;
+}
 static int xmp_write(const char *path, const char *buf, size_t size,
 		     off_t offset, struct fuse_file_info *fi)
 {
@@ -483,6 +517,7 @@ static struct fuse_operations xmp_oper = {
 	.utimens	= xmp_utimens,
 	.open		= xmp_open,
 	.read		= xmp_read,
+	.read		= xmp_close,
 	.write		= xmp_write,
 	.statfs		= xmp_statfs,
 	.release	= xmp_release,
