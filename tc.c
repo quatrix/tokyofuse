@@ -10,6 +10,9 @@
 
 char *to_tc_path(const char *path)
 {
+	if (path == NULL)
+		return NULL;
+
 	char *tc_path;
 	size_t tc_path_len = strlen(path) + 4; // 4 for '.tc'
 	tc_path = malloc(tc_path_len * sizeof(char));
@@ -67,6 +70,10 @@ int is_parent_tc(const char *path)
 	int rc = 0;
 
 	char *parent = parent_path(path);
+
+	if (parent == NULL) // no parents
+		return 0;
+
 	if (is_tc(parent))
 		rc = 1;
 

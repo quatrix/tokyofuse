@@ -18,7 +18,7 @@ testsuite: utils.o tc.o metadata.o testsuite.c
 	$(CC) -ltap utils.o tc.o testsuite.c -o testsuite
 
 tokyofuse: utils.o tc.o metadata.o tokyofuse.c
-	$(CC) $(FLAGS) tc.o utils.o metadata.o tokyofuse.c -o tokyofuse
+	$(CC) $(FLAGS) -ltokyocabinet -lz tc.o utils.o metadata.o tokyofuse.c -o tokyofuse
 
 test: testsuite
 	./testsuite

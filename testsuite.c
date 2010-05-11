@@ -3,6 +3,7 @@
 #include <string.h>
 #include <tap.h>
 #include "utils.h"
+#include "tc.h"
 
 int main(int argc, char **argv)
 {
@@ -19,6 +20,28 @@ int main(int argc, char **argv)
 
 	char s2[] = "baba";
 	ok(remove_suffix(s2,"world") == NULL, "can't remove world from baba");
+
+	char *parent = NULL;
+
+	parent = parent_path("/hey/ho/lets");
+	ok(strcmp(parent, "/hey/ho") == 0, "parent of /hey/ho/lets is /hey/ho");
+
+	parent = parent_path("/hey/ho/lets/");
+	ok(strcmp(parent, "/hey/ho") == 0, "parent of /hey/ho/lets/ is /hey/ho");
+
+	ok(strcmp(leaf_file(parent), "ho") == 0, "leaf of /hey/ho is ho");
+
+	free(parent);
+
+	char *s;
+	s = to_tc_path("/baba/hey");
+	
+	ok(strcmp(s, "/baba/hey.tc") == 0, "/baba/hey -> /baba/hey.tc");
+	
+	s = to_tc_path(NULL);
+	ok(s == NULL, "null path returns null tc path");
+
+
 
 
 	return EXIT_SUCCESS;

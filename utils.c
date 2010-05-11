@@ -9,8 +9,15 @@
 char *parent_path(const char *path)
 {
 	char *tc_path, *p_path;
+	size_t tc_path_len;
 
 	tc_path = strdup(path);
+	tc_path_len = strlen(tc_path);
+
+	// if directory, get parent directory
+	if (tc_path[tc_path_len -1] == '/')
+		tc_path[tc_path_len - 1] = '\0';
+
 	p_path = strrchr(tc_path, '/');
 
 	if (p_path != NULL) {
@@ -19,6 +26,11 @@ char *parent_path(const char *path)
 	}
 
 	return NULL;
+}
+
+char *leaf_file(const char *path)
+{
+	return strrchr(path, '/') + 1;
 }
 
 int file_exists(const char *path)

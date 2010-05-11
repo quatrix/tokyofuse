@@ -1,0 +1,5 @@
+#!/bin/bash
+
+fusermount -u /tokyo 
+make && ./tokyofuse /tokyo/ -d 
+

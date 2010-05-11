@@ -31,18 +31,23 @@
 #include <sys/xattr.h>
 #endif
 #include <stdlib.h>
+#include <pthread.h>
 #include "utils.h"
 #include "tc.h"
 #include "metadata.h"
 
+
+pthread_rwlock_t tc_iter_lock;
 
 
 static int xmp_getattr(const char *path, struct stat *stbuf)
 {
 	if (is_tc(path))
 		tc_dir_stat(stbuf);
-	else if (is_parent_tc(path))
-		tc_file_stat(stbuf,5);
+	else if (is_parent_tc(path)) {
+		fprintf(stderr, "%s has tc parent\n", path);
+		tc_file_stat(stbuf, meta_filesize(path));
+	}
 	else if (has_suffix(path, ".tc"))
 		tc_dir_stat(stbuf);
 	else 
@@ -84,22 +89,37 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 	(void) offset;
 	(void) fi;
-
-	int i;
+	
 
 	if (is_tc(path)) {
-		add_path(path, 5);
-		for (i = 0; i < 10; i++) {
+		tc_dir_meta_t *tc_dir;
+		tc_file_meta_t *tc_file;
+
+		fprintf(stderr, "'%s' is tc\n", path); 
+		
+		tc_dir = add_path(path);
+
+		if (tc_dir == NULL) {
+			fprintf(stderr, "failed to open tc metadata for %s\n", path);
+			return -errno;
+		}
+
+/*
+		if (pthread_rwlock_wrlock(&tc_iter_lock) != 0) {
+			fprintf(stderr, "can't get writelock\n");
+			return -errno;
+		}
+*/
+		for(tc_file=tc_dir->files; tc_file != NULL; tc_file=tc_file->hh.next) {
 			struct stat st;
 			tc_file_stat(&st, 5);
-	
-			char n[10];
-			sprintf(n,"%d.txt",i);
 
-			if (filler(buf, n, &st, 0))
+			if (filler(buf, tc_file->path, &st, 0))
 				break;
 		}
 
+//		pthread_rwlock_unlock(&tc_iter_lock);
+	
 	}
 	else {
 		dp = opendir(path);
@@ -433,5 +453,12 @@ static struct fuse_operations xmp_oper = {
 int main(int argc, char *argv[])
 {
 	umask(0);
+
+	if (pthread_rwlock_init(&tc_iter_lock,NULL) != 0) {
+		fprintf(stderr, "can't init rwlock\n");
+		return -errno;
+	}
+
+	init_metadata();
 	return fuse_main(argc, argv, &xmp_oper, NULL);
 }
