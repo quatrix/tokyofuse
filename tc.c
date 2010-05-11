@@ -68,6 +68,9 @@ int is_tc(const char *path)
 int is_parent_tc(const char *path)
 {
 	int rc = 0;
+	
+	if (path == NULL)
+		return 0;
 
 	char *parent = parent_path(path);
 

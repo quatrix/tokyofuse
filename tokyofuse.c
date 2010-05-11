@@ -290,12 +290,23 @@ static int xmp_utimens(const char *path, const struct timespec ts[2])
 static int xmp_open(const char *path, struct fuse_file_info *fi)
 {
 	int res;
+	char *value;
 
-	res = open(path, fi->flags);
-	if (res == -1)
-		return -errno;
+	if (is_parent_tc(path)) { 
+		value = tc_value(path);
 
-	close(res);
+		if (value == NULL)
+			return -errno;
+
+		fi->fh = (uintptr_t)value;
+	}
+	else {
+		res = open(path, fi->flags);
+		if (res == -1)
+			return -errno;
+
+		close(res);
+	}
 	return 0;
 }
 
@@ -304,17 +315,42 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 {
 	int fd;
 	int res;
+	char *value;
+	size_t value_len;
 
-	(void) fi;
-	fd = open(path, O_RDONLY);
-	if (fd == -1)
-		return -errno;
+	fprintf(stderr, "wants to read %d from %s (offset: %d)\n", size, path, offset);
 
-	res = pread(fd, buf, size, offset);
-	if (res == -1)
-		res = -errno;
+	if (is_parent_tc(path)) { 
+		value = (char *)(uintptr_t)fi->fh;
 
-	close(fd);
+		if (value == NULL)
+			return -errno;
+
+		value += offset;
+
+		value_len = strlen(value);
+
+		if (value_len < size) {
+			strncpy(buf, value, value_len);
+			res = value_len;
+		}
+		else {
+			strncpy(buf, value, size);
+			res = size;
+		}
+	}
+	else {
+		(void) fi;
+		fd = open(path, O_RDONLY);
+		if (fd == -1)
+			return -errno;
+
+		res = pread(fd, buf, size, offset);
+		if (res == -1)
+			res = -errno;
+
+		close(fd);
+	}
 	return res;
 }
 
@@ -352,9 +388,19 @@ static int xmp_release(const char *path, struct fuse_file_info *fi)
 {
 	fprintf(stderr, "releasing %s\n",path);
 
-
 	(void) path;
 	(void) fi;
+	char *value = NULL;
+
+	if (is_parent_tc(path)) {
+		value = (char *)(uintptr_t)fi->fh;
+		
+		if (value != NULL)
+			free(value);
+
+	}
+
+
 	return 0;
 }
 

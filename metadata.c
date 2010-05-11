@@ -232,6 +232,57 @@ int tc_filesize(const char *path)
 	return size;
 }
 
+char *tc_value(const char *path)
+{
+	TCHDB *hdb;
+	int ecode;
+	char *value;
+	char *parent = parent_path(path);
+	char *leaf = leaf_file(path);
+
+	fprintf(stderr, "fetching filesize for %s/%s\n", parent, leaf);
+
+	hdb = tchdbnew();
+
+	char *tc_path = to_tc_path(parent);
+	
+	if (tc_path == NULL)
+		return NULL;
+
+	if (pthread_rwlock_wrlock(&tc_lock) != 0) {
+		fprintf(stderr, "can't get writelock\n");
+		return NULL;
+	}
+
+	if(!tchdbopen(hdb, tc_path, HDBOREADER | HDBONOLCK )) {
+		ecode = tchdbecode(hdb);
+		fprintf(stderr, "open error: %s\n", tchdberrmsg(ecode));
+		free(tc_path);
+		free(parent);
+		pthread_rwlock_unlock(&tc_lock);
+		return NULL;
+	}
+
+	free(tc_path);
+	free(parent);
+
+	value = tchdbget2(hdb, leaf);
+	if (value == NULL) {
+		ecode = tchdbecode(hdb);
+		fprintf(stderr, "getvalue error: %s\n", tchdberrmsg(ecode));
+	}
+
+	if(!tchdbclose(hdb)) {
+		ecode = tchdbecode(hdb);
+		fprintf(stderr, "close error: %s\n", tchdberrmsg(ecode));
+	}
+
+	tchdbdel(hdb);	
+	pthread_rwlock_unlock(&tc_lock);
+
+	return value;
+}
+
 int remove_path(const char *path) 
 {
 	tc_dir_meta_t *tc_dir;

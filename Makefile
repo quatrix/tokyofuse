@@ -15,11 +15,13 @@ metadata.o: metadata.c metadata.h
 	$(CC_O) metadata.c -o metadata.o
 
 testsuite: utils.o tc.o metadata.o testsuite.c
-	$(CC) -ltap utils.o tc.o testsuite.c -o testsuite
+	$(CC) -ltap -ltokyocabinet utils.o tc.o metadata.o testsuite.c -o testsuite
 
 tokyofuse: utils.o tc.o metadata.o tokyofuse.c
 	$(CC) $(FLAGS) -ltokyocabinet -lz tc.o utils.o metadata.o tokyofuse.c -o tokyofuse
 
 test: testsuite
 	./testsuite
-	
+
+clean:
+	rm -f *.o testsuite tokyofuse	
