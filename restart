@@ -1,5 +1,5 @@
 #!/bin/bash
 
 fusermount -u /tokyo 
-make && ./tokyofuse /tokyo/ -d 
+make && ./tokyofuse /tokyo/ -d $1
 
