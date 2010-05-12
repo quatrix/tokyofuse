@@ -160,17 +160,14 @@ static inline int add_to_meta_hash(tc_dir_meta_t *tc_dir)
 
 tc_dir_meta_t *init_tc_dir(tc_dir_meta_t *tc_dir) 
 {
-	TCHDB *hdb 				= NULL;
-	int ecode, i, rc;
-
 	size_t path_len = strlen(tc_dir->path);
 	char tc_path[path_len + TC_PREFIX_LEN + 1];
 
 	to_tc_path(tc_dir->path, tc_path);
 
-	hdb = tchdbnew();
+	tc_dir->hdb = tchdbnew();
 	
-	if (hdb == NULL) {
+	if (tc_dir->hdb == NULL) {
 		fprintf(stderr, "failed to create a new hdb object\n");
 		goto hdb_error;
 	}
@@ -178,33 +175,9 @@ tc_dir_meta_t *init_tc_dir(tc_dir_meta_t *tc_dir)
 	
 	fprintf(stderr, "opening hdb (%s)\n", tc_dir->path);
 
-	for (i = 0; i < TC_CABINET_TRIES; i++) {
-		rc = tchdbopen(hdb, tc_path, HDBOREADER | HDBONOLCK);
-
-		if (!rc) {
-			ecode = tchdbecode(hdb);
-
-			fprintf(stderr, "open error: %s (%s) [%d/%d]\n", tchdberrmsg(ecode), tc_dir->path, i, TC_CABINET_TRIES);
-
-			if (ecode == TCEMMAP) {
-				if (!wake_up_gc())
-					break;
-
-				usleep(TC_CABINET_USLEEP);
-			}
-			else 
-				break;
-		}
-		else 
-			break;
-	}
-
-	if (!rc)
-		goto hdb_error;
+	TC_RETRY_LOOP(tc_dir->hdb, tc_dir->path, tchdbopen(tc_dir->hdb, tc_path, HDBOREADER | HDBONOLCK), goto hdb_error);
 
 	fprintf(stderr, "hdb opened (%s)\n", tc_dir->path);
-
-	tc_dir->hdb = hdb;
 
 	// if all successful, raise refcount
 	tc_dir->refcount = 1; 
@@ -213,8 +186,8 @@ tc_dir_meta_t *init_tc_dir(tc_dir_meta_t *tc_dir)
 	return tc_dir;
 
 hdb_error:
-	if (hdb != NULL)
-		tchdbdel(hdb);
+	if (tc_dir->hdb != NULL)
+		tchdbdel(tc_dir->hdb);
 
 	tc_dir->hdb = NULL;
 
@@ -269,11 +242,13 @@ tc_file_meta_t *get_next_tc_file(tc_dir_meta_t *tc_dir, tc_file_meta_t *last_tc_
 	int fetched_data_len = 0;
 	int current_key_len = 0;
 
-	//fprintf(stderr, "last_key: %s last_key_len: %d\n", last_key, last_key_len);
-
-	current_key = tchdbgetnext3(tc_dir->hdb, last_key,
-					last_key_len, &current_key_len,
-					&fetched_data, &fetched_data_len);
+	
+	TC_RETRY_LOOP(tc_dir->hdb, tc_dir->path, ( 
+				current_key = tchdbgetnext3(tc_dir->hdb, 
+				last_key, last_key_len, 
+				&current_key_len, &fetched_data, 
+				&fetched_data_len)) != NULL, 
+			break);
 
 	free_tc_file(last_tc_file);
 
@@ -394,7 +369,7 @@ tc_dir_meta_t *lookup_path(const char *path)
 
 int tc_filesize(const char *path)
 {
-	int ecode, size, i;
+	int size;
 	char *parent = parent_path(path);
 	char *leaf = leaf_file(path);
 	tc_dir_meta_t *tc_dir;
@@ -407,33 +382,10 @@ int tc_filesize(const char *path)
 	if (tc_dir == NULL)
 		return -1;
 
-
-
-	for (i = 0; i <= TC_CABINET_TRIES; i++) {
-		size = tchdbvsiz(tc_dir->hdb, leaf, strlen(leaf));
-
-		if (size == -1) {
-			ecode = tchdbecode(tc_dir->hdb);
-
-			fprintf(stderr, "vsize error: %s (%s) [%d/%d]\n", tchdberrmsg(ecode), tc_dir->path, i, TC_CABINET_TRIES);
-
-			if (ecode == TCEMMAP) {
-				if (!wake_up_gc())
-					break;
-
-				usleep(TC_CABINET_USLEEP);
-			}
-			else  
-				break;
-			
-		}
-		else 
-			break;
-	}
+	TC_RETRY_LOOP(tc_dir->hdb, tc_dir->path, (size = tchdbvsiz(tc_dir->hdb, leaf, strlen(leaf))) != -1, break);
 
 	if (!tc_dir_dec_refcount(tc_dir))
 		return -1;
-
 	
 	fprintf(stderr, "fetched filesize for %s is %d\n", leaf, size);
 	return size;
@@ -448,7 +400,6 @@ int tc_dir_get_filesize(tc_dir_meta_t *tc_dir, const char *path)
 int tc_value(const char *path, tc_filehandle_t *fh)
 {
 	tc_dir_meta_t *tc_dir;
-	int ecode, i;
 	char *value = NULL;
 	int value_len = 0;
 	char *parent = parent_path(path);
@@ -462,28 +413,7 @@ int tc_value(const char *path, tc_filehandle_t *fh)
 	if (tc_dir == NULL)
 		return 0;
 
-
-
-	for (i = 0; i <= TC_CABINET_TRIES; i++) {
-		value = tchdbget(tc_dir->hdb, leaf, strlen(leaf), &value_len);
-
-		if (value == NULL) {
-			ecode = tchdbecode(tc_dir->hdb);
-
-			fprintf(stderr, "getvalue error: %s (%s) [%d/%d]\n", tchdberrmsg(ecode), tc_dir->path, i, TC_CABINET_TRIES);
-
-			if (ecode == TCEMMAP) {
-				if (!wake_up_gc())
-					break;
-
-				usleep(TC_CABINET_USLEEP);
-			}
-			else 
-				break;
-		}
-		else 
-			break;
-	}
+	TC_RETRY_LOOP(tc_dir->hdb, tc_dir->path, ( value = tchdbget(tc_dir->hdb, leaf, strlen(leaf), &value_len) ) != NULL, break);
 
 	if (value == NULL)  {
 		tc_dir_dec_refcount(tc_dir);
@@ -678,16 +608,20 @@ void tc_gc(void *data)
 						fprintf(stderr, "tc_gc: refcount for %s is 0 -- freeing it\n", tc_dir->path);
 
 						HASH_DEL(meta, tc_dir);
+
+						metalock_unlock();
 					
 						free_tc_dir(tc_dir); // also unlocks
 					} 
-					else 
+					else {
+						metalock_unlock();
 						tc_dir_unlock(tc_dir);
+					}
 				}
-				else 
+				else  {
 					fprintf(stderr, "tc_gc: can't lock tc_dir %s\n", tc_dir->path);
-				
-				metalock_unlock();
+					metalock_unlock();
+				}
 			}
 			else
 				fprintf(stderr, "tc_gc: can't get meta lock\n");

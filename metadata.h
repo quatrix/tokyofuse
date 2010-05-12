@@ -12,6 +12,25 @@
 #define TC_CABINET_TRIES 500
 #define TC_CABINET_USLEEP 30 // micro seconds
 
+#define TC_RETRY_LOOP(hdb, path, cond, on_failure) \
+do {\
+	int i = 0, ecode = 0;\
+\
+	while (!(cond)) {\
+		ecode = tchdbecode(hdb); \
+\
+		fprintf(stderr, "%s error: %s (%s) [%d/%d]\n", #cond, tchdberrmsg(ecode), path, i, TC_CABINET_TRIES);\
+\
+		if (ecode != TCEMMAP || ++i == TC_CABINET_TRIES) {\
+			on_failure;\
+			break;\
+		}\
+\
+		wake_up_gc();\
+		usleep(TC_CABINET_USLEEP);\
+	}\
+\
+} while (0)
 
 struct tc_file_meta {
 	char *path;
