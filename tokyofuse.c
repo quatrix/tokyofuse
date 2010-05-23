@@ -53,7 +53,8 @@ static int xmp_getattr(const char *path, struct stat *stbuf)
 		tc_dir_stat(stbuf);
 	else if (is_parent_tc(path)) {
 		fprintf(stderr, "%s has tc parent\n", path);
-		tc_file_stat(stbuf, meta_filesize(path));
+		tc_file_stat(stbuf, 5);
+		//tc_file_stat(stbuf, meta_filesize(path));
 	}
 	else if (has_suffix(path, ".tc"))
 		tc_dir_stat(stbuf);
@@ -111,21 +112,17 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 			return -errno;
 		}
 
-/*
-		if (pthread_rwlock_wrlock(&tc_iter_lock) != 0) {
-			fprintf(stderr, "can't get writelock\n");
-			return -errno;
-		}
-*/
+		filler(buf, ".", NULL, 0);
+		filler(buf, "..", NULL, 0);
+
 		for(tc_file=tc_dir->files; tc_file != NULL; tc_file=tc_file->hh.next) {
 			struct stat st;
-			tc_file_stat(&st, 5);
+			tc_file_stat(&st, tc_file->size);
 
 			if (filler(buf, tc_file->path, &st, 0))
 				break;
 		}
 
-//		pthread_rwlock_unlock(&tc_iter_lock);
 	
 	}
 	else {
@@ -332,6 +329,7 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 	int res;
 	tc_filehandle_t *fh;	
 
+	fprintf(stderr, "wants to read %s\n", path);
 	//fprintf(stderr, "wants to read %d from %s (offset: %d)\n", size, path, offset);
 
 	if (is_parent_tc(path)) { 
@@ -369,25 +367,6 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 	return res;
 }
 
-static int xmp_close(const char *path, char *buf, size_t size, off_t offset,
-		    struct fuse_file_info *fi)
-{
-	tc_filehandle_t *fh;	
-
-	if (is_parent_tc(path)) { 
-		fh = (tc_filehandle_t *)(uintptr_t)fi->fh;
-	
-		if (fh == NULL)
-			return -errno;
-
-		if (fh->value == NULL)
-			return -errno;
-
-		free(fh->value);
-	}
-
-	return 0;
-}
 static int xmp_write(const char *path, const char *buf, size_t size,
 		     off_t offset, struct fuse_file_info *fi)
 {
@@ -424,14 +403,19 @@ static int xmp_release(const char *path, struct fuse_file_info *fi)
 
 	(void) path;
 	(void) fi;
-	char *value = NULL;
+	tc_filehandle_t *fh;	
 
-	if (is_parent_tc(path)) {
-		value = (char *)(uintptr_t)fi->fh;
-		
-		if (value != NULL)
-			free(value);
+	if (is_parent_tc(path)) { 
+		fh = (tc_filehandle_t *)(uintptr_t)fi->fh;
+	
+		if (fh == NULL)
+			return -errno;
 
+		if (fh->value == NULL)
+			return -errno;
+
+		free(fh->value);
+		free(fh);
 	}
 
 
@@ -517,7 +501,6 @@ static struct fuse_operations xmp_oper = {
 	.utimens	= xmp_utimens,
 	.open		= xmp_open,
 	.read		= xmp_read,
-	.read		= xmp_close,
 	.write		= xmp_write,
 	.statfs		= xmp_statfs,
 	.release	= xmp_release,
