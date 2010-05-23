@@ -10,7 +10,9 @@
 
 tc_dir_meta_t *meta = NULL;
 pthread_rwlock_t meta_lock;
+#ifdef TC_LOCK 
 pthread_rwlock_t tc_lock;
+#endif
 
 int uid = 0;
 
@@ -21,10 +23,14 @@ int init_metadata(void)
 		return -errno;
 	}
 
+#ifdef TC_LOCK 
+	fprintf(stderr, "TC_LOCK defined, will use rwlock for all tokyocabinet operations\n");
+
 	if (pthread_rwlock_init(&tc_lock, NULL) != 0) {
 		fprintf(stderr, "can't init rwlock\n");
 		return -errno;
 	}
+#endif
 
 	return 0;
 }
@@ -38,14 +44,17 @@ tc_dir_meta_t *add_path(const char *path)
 	
 
 	fprintf(stderr, "adding %s to metadata hash\n", path);
-
+#ifdef TC_LOCK 
 	if (pthread_rwlock_wrlock(&tc_lock) != 0) {
 		fprintf(stderr, "can't get writelock\n");
 		return NULL;
 	}
+#endif
 
 	if ((tc_dir = lookup_path(path)) != NULL) {
+#ifdef TC_LOCK 
 		pthread_rwlock_unlock(&tc_lock);
+#endif
 		tc_dir->refcount++;
 		fprintf(stderr, "key %s already in metadata hash (refcount incs to %d)\n", path, tc_dir->refcount);
 
@@ -57,7 +66,9 @@ tc_dir_meta_t *add_path(const char *path)
 	tc_dir = (tc_dir_meta_t *) malloc(sizeof(tc_dir_meta_t));
 
 	if (tc_dir == NULL) {
+#ifdef TC_LOCK 
 		pthread_rwlock_unlock(&tc_lock);
+#endif
 		return NULL;
 	}
 
@@ -69,12 +80,14 @@ tc_dir_meta_t *add_path(const char *path)
 
 	char *tc_path = to_tc_path(path);
 
-	if (!tchdbopen(hdb, tc_path, HDBOREADER)) {
+	if (!tchdbopen(hdb, tc_path, HDBOREADER | HDBONOLCK)) {
 		ecode = tchdbecode(hdb);
 		fprintf(stderr, "add_path open error: %s\n",
 			tchdberrmsg(ecode));
 		free(tc_path);
+#ifdef TC_LOCK 
 		pthread_rwlock_unlock(&tc_lock);
+#endif
 		return NULL;
 	}
 
@@ -96,13 +109,17 @@ tc_dir_meta_t *add_path(const char *path)
 
 	if (pthread_rwlock_wrlock(&meta_lock) != 0) {
 		fprintf(stderr, "can't get writelock\n");
+#ifdef TC_LOCK 
 		pthread_rwlock_unlock(&tc_lock);
+#endif
 		return NULL;
 	}
 
 	HASH_ADD_KEYPTR(hh, meta, tc_dir->path, strlen(tc_dir->path), tc_dir);
 	pthread_rwlock_unlock(&meta_lock);
+#ifdef TC_LOCK 
 	pthread_rwlock_unlock(&tc_lock);
+#endif
 
 	return tc_dir;
 }
@@ -220,18 +237,22 @@ int tc_filesize(const char *path)
 	if (tc_path == NULL)
 		return -errno;
 
+#ifdef TC_LOCK 
 	if (pthread_rwlock_wrlock(&tc_lock) != 0) {
 		fprintf(stderr, "can't get writelock\n");
 		return -errno;
 	}
+#endif
 
-	if (!tchdbopen(hdb, tc_path, HDBOREADER)) {
+	if (!tchdbopen(hdb, tc_path, HDBOREADER | HDBONOLCK)) {
 		ecode = tchdbecode(hdb);
 		fprintf(stderr, "tc_filesize: open error: %s\n",
 			tchdberrmsg(ecode));
 		free(tc_path);
 		free(parent);
+#ifdef TC_LOCK 
 		pthread_rwlock_unlock(&tc_lock);
+#endif
 		return -errno;
 	}
 
@@ -251,7 +272,9 @@ int tc_filesize(const char *path)
 	}
 
 	tchdbdel(hdb);
+#ifdef TC_LOCK 
 	pthread_rwlock_unlock(&tc_lock);
+#endif
 	
 	fprintf(stderr, "fetched filesize for %s is %d\n", leaf, size);
 	return size;
@@ -274,18 +297,22 @@ char *tc_value(const char *path, int *value_len)
 	if (tc_path == NULL)
 		return NULL;
 
+#ifdef TC_LOCK 
 	if (pthread_rwlock_wrlock(&tc_lock) != 0) {
 		fprintf(stderr, "can't get writelock\n");
 		return NULL;
 	}
+#endif
 
-	if (!tchdbopen(hdb, tc_path, HDBOREADER)) {
+	if (!tchdbopen(hdb, tc_path, HDBOREADER | HDBONOLCK)) {
 		ecode = tchdbecode(hdb);
 		fprintf(stderr, "tc_value open error: %s\n",
 			tchdberrmsg(ecode));
 		free(tc_path);
 		free(parent);
+#ifdef TC_LOCK 
 		pthread_rwlock_unlock(&tc_lock);
+#endif
 		return NULL;
 	}
 
@@ -308,7 +335,9 @@ char *tc_value(const char *path, int *value_len)
 	}
 
 	tchdbdel(hdb);
+#ifdef TC_LOCK 
 	pthread_rwlock_unlock(&tc_lock);
+#endif
 
 
 	return value;
