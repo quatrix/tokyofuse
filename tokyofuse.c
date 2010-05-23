@@ -298,7 +298,11 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 {
 	int res;
 
+	fprintf(stderr, "wants to open %s\n", path);
+
 	if (is_parent_tc(path)) { 
+		fprintf(stderr, "%s has a tc parent\n", path);
+
 		tc_filehandle_t *fh	= (tc_filehandle_t *)malloc(sizeof(tc_filehandle_t));
 
 		if (fh == NULL) {
@@ -332,6 +336,7 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 	int res;
 	tc_filehandle_t *fh;	
 
+	fprintf(stderr, "wants to read %s\n", path);
 	//fprintf(stderr, "wants to read %d from %s (offset: %d)\n", size, path, offset);
 
 	if (is_parent_tc(path)) { 
