@@ -29,11 +29,11 @@ int init_metadata(void)
 	return 0;
 }
 
+// FIXME memory leaks when things fail
 tc_dir_meta_t *add_path(const char *path)
 {
 	TCHDB *hdb;
 	tc_dir_meta_t *tc_dir = NULL;
-	tc_file_meta_t *tc_file = NULL;
 	int ecode;
 	
 
@@ -45,8 +45,10 @@ tc_dir_meta_t *add_path(const char *path)
 	}
 
 	if ((tc_dir = lookup_path(path)) != NULL) {
-		fprintf(stderr, "key %s already in metadata hash\n", path);
 		pthread_rwlock_unlock(&tc_lock);
+		tc_dir->refcount++;
+		fprintf(stderr, "key %s already in metadata hash (refcount incs to %d)\n", path, tc_dir->refcount);
+
 		return tc_dir;
 	}
 
@@ -61,7 +63,7 @@ tc_dir_meta_t *add_path(const char *path)
 
 	tc_dir->path = strdup(path);
 	tc_dir->files = NULL;
-	tc_dir->uid = uid++;
+	tc_dir->refcount = 1;
 
 	hdb = tchdbnew();
 
@@ -77,62 +79,13 @@ tc_dir_meta_t *add_path(const char *path)
 	}
 
 	free(tc_path);
-/* 
-	if (!tchdbforeach(hdb, tc_file_cb, tc_dir)) {
-		ecode = tchdbecode(hdb);
-		fprintf(stderr, "foreach error: %s\n", tchdberrmsg(ecode));
-		pthread_rwlock_unlock(&tc_lock);
+
+	if (create_file_hash(hdb, tc_dir) < 0) {
+		fprintf(stderr, "can't create file hash\n");
 		return NULL;
 	}
-*/
 
-	const char *fetched_data;
-	char *current_key = NULL;
-	char *last_key = NULL;
-
-	int fetched_data_len = 0;
-	int current_key_len = 0;
-	int last_key_len = 0;
-/* 
-	tc_file = (tc_file_meta_t *) malloc(sizeof(tc_file_meta_t));
-	char *b = strdup("hey");
-
-	tc_file->path = b;
-	tc_file->size  = 5;
-	HASH_ADD_KEYPTR(hh, tc_dir->files, b, 3, tc_file);
-	*/
-
-	while (true) {
-		last_key = current_key;
-		last_key_len = current_key_len;
-
-		current_key = tchdbgetnext3(hdb, last_key,
-					    last_key_len, &current_key_len,
-					    &fetched_data, &fetched_data_len);
-
-		free(last_key);
-
-		if (current_key != NULL) {
-			tc_file = (tc_file_meta_t *) malloc(sizeof(tc_file_meta_t));
-
-			if (tc_file == NULL) {
-				fprintf(stderr,
-					"can't allocate memory for new tc_file\n");
-				return NULL;
-			}
-
-			tc_file->path = strndup(current_key, current_key_len);
-			tc_file->size = fetched_data_len;
-			
-			fprintf(stderr, "key: %s ksiz: %d val_len: %d\n", tc_file->path, last_key_len,  fetched_data_len);
-
-			HASH_ADD_KEYPTR(hh, tc_dir->files, tc_file->path, last_key_len, tc_file);
-		}
-		else 
-			break;
-	}
-
-	print_file_hash(tc_dir->files);
+	//print_file_hash(tc_dir->files);
 
 	if (!tchdbclose(hdb)) {
 		ecode = tchdbecode(hdb);
@@ -154,28 +107,50 @@ tc_dir_meta_t *add_path(const char *path)
 	return tc_dir;
 }
 
-bool tc_file_cb(const void *key, int ksiz, const void *vbuf, int vsiz,
-		void *tc_dm)
+
+int create_file_hash(TCHDB *hdb, tc_dir_meta_t *tc_dir)
 {
-
 	tc_file_meta_t *tc_file = NULL;
-	tc_dir_meta_t *tc_dir = (tc_dir_meta_t *) tc_dm;
 
-	tc_file = (tc_file_meta_t *) malloc(sizeof(tc_file_meta_t));
+	const char *fetched_data;
+	char *current_key = NULL;
+	char *last_key = NULL;
 
-	if (tc_file == NULL) {
-		fprintf(stderr, "can't allocate memory for new tc_file\n");
-		return false;
+	int fetched_data_len = 0;
+	int current_key_len = 0;
+	int last_key_len = 0;
+
+	while (true) {
+		last_key = current_key;
+		last_key_len = current_key_len;
+
+		current_key = tchdbgetnext3(hdb, last_key,
+					    last_key_len, &current_key_len,
+					    &fetched_data, &fetched_data_len);
+
+		free(last_key);
+
+		if (current_key != NULL) {
+			tc_file = (tc_file_meta_t *) malloc(sizeof(tc_file_meta_t));
+
+			if (tc_file == NULL) {
+				fprintf(stderr,
+					"can't allocate memory for new tc_file\n");
+				return -errno;
+			}
+
+			tc_file->path = strndup(current_key, current_key_len);
+			tc_file->size = fetched_data_len;
+			
+			//fprintf(stderr, "key: %s ksiz: %d val_len: %d\n", tc_file->path, current_key_len,  fetched_data_len);
+
+			HASH_ADD_KEYPTR(hh, tc_dir->files, tc_file->path, current_key_len, tc_file);
+		}
+		else 
+			break;
 	}
 
-	tc_file->path = strndup(key, ksiz);
-	tc_file->size = vsiz;
-
-	//fprintf(stderr, "IN CALLBACK %s (ksiz: %d) %d\n", tc_file->path, ksiz, tc_file->size);
-
-	HASH_ADD_KEYPTR(hh, tc_dir->files, tc_file->path, ksiz, tc_file);
-
-	return true;
+	return 0;
 }
 
 tc_dir_meta_t *lookup_path(const char *path)
@@ -348,15 +323,22 @@ int remove_path(const char *path)
 	if (tc_dir != NULL) {
 		fprintf(stderr, "removing path %s\n", path);
 
-		if (pthread_rwlock_wrlock(&meta_lock) != 0) {
-			fprintf(stderr, "can't get writelock\n");
-			return -errno;
+		if (tc_dir->refcount > 1) { 
+			tc_dir->refcount--;
+			fprintf(stderr, "%s refcount decs to %d\n", path, tc_dir->refcount);
 		}
+		else {
+			fprintf(stderr, "%s refcount is %d -- freeing it\n", path, tc_dir->refcount);
+			if (pthread_rwlock_wrlock(&meta_lock) != 0) {
+				fprintf(stderr, "can't get writelock\n");
+				return -errno;
+			}
 
-		HASH_DEL(meta, tc_dir);
-		free_tc_dir(tc_dir);
+			HASH_DEL(meta, tc_dir);
+			free_tc_dir(tc_dir);
 
-		pthread_rwlock_unlock(&meta_lock);
+			pthread_rwlock_unlock(&meta_lock);
+		}
 	}
 
 	return 0;

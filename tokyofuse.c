@@ -53,8 +53,7 @@ static int xmp_getattr(const char *path, struct stat *stbuf)
 		tc_dir_stat(stbuf);
 	else if (is_parent_tc(path)) {
 		fprintf(stderr, "%s has tc parent\n", path);
-		tc_file_stat(stbuf, 5);
-		//tc_file_stat(stbuf, meta_filesize(path));
+		tc_file_stat(stbuf, meta_filesize(path));
 	}
 	else if (has_suffix(path, ".tc"))
 		tc_dir_stat(stbuf);
