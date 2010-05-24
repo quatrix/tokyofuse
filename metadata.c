@@ -8,13 +8,13 @@
 #include "utils.h"
 #include "tc.h"
 
-tc_dir_meta_t *meta = NULL;
-pthread_rwlock_t meta_lock;
-#ifdef TC_LOCK 
-pthread_rwlock_t tc_lock;
-#endif
+#define TC_LOCK
 
-int uid = 0;
+static tc_dir_meta_t *meta = NULL;
+static pthread_rwlock_t meta_lock;
+#ifdef TC_LOCK 
+static pthread_rwlock_t tc_lock;
+#endif
 
 int init_metadata(void)
 {

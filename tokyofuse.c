@@ -40,12 +40,10 @@
 struct tc_filehandle {
 	char *value;
 	int value_len;
+	int refcount;
 };
 
 typedef struct tc_filehandle tc_filehandle_t;
-
-pthread_rwlock_t tc_iter_lock;
-
 
 static int xmp_getattr(const char *path, struct stat *stbuf)
 {
@@ -66,10 +64,11 @@ static int xmp_getattr(const char *path, struct stat *stbuf)
 
 static int xmp_access(const char *path, int mask)
 {
-	int res;
+	fprintf(stderr, "access called on %s\n", path);
 
-	res = access(path, mask);
-	if (res == -1)
+	if (is_tc(path))
+		fprintf(stderr, "access %s has a tc parent\n", path);
+	else if (access(path, mask) == -1)
 		return -errno;
 
 	return 0;
@@ -309,6 +308,7 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 		fh->value = tc_value(path, &fh->value_len);
 
 		if (fh->value == NULL) {
+			fprintf(stderr, "tc_value returned NULL\n");
 			free(fh);
 			return -errno;
 		}
@@ -330,30 +330,37 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 {
 	int fd;
 	int res;
+	char *value;
+	size_t value_len;
 	tc_filehandle_t *fh;	
 
-	fprintf(stderr, "wants to read %s\n", path);
-	//fprintf(stderr, "wants to read %d from %s (offset: %d)\n", size, path, offset);
+	//fprintf(stderr, "wants to read %s\n", path);
+	fprintf(stderr, "wants to read %d from %s (offset: %d)\n", size, path, offset);
 
 	if (is_parent_tc(path)) { 
-		fh = (tc_filehandle_t *)(uintptr_t)fi->fh;
 
+
+		fh = (tc_filehandle_t *)(uintptr_t)fi->fh;
 		if (fh == NULL)
 			return -errno;
 
 		if (fh->value == NULL)
 			return -errno;
 
-		fh->value += offset;
+		value = fh->value + offset;
+		value_len = fh->value_len - offset;
 
-		if (fh->value_len < size) {
-			memcpy(buf, fh->value, fh->value_len);
-			res = fh->value_len;
+		if (value_len <= size) {
+			fprintf(stderr, "request bigger or equals to value_len (: %d) [writing: %d | requested: %d]\n", fh->value_len, fh->value_len, size);
+			memcpy(buf, value, value_len);
+			res = value_len;
 		}
 		else {
-			memcpy(buf, fh->value, size);
+			fprintf(stderr, "requested smaller than value_len (: %d) [writing: %d | requested: %d]\n", fh->value_len, size, size);
+			memcpy(buf, value, size);
 			res = size;
 		}
+
 	}
 	else {
 		(void) fi;
@@ -403,7 +410,6 @@ static int xmp_statfs(const char *path, struct statvfs *stbuf)
 static int xmp_release(const char *path, struct fuse_file_info *fi)
 {
 	fprintf(stderr, "releasing %s\n",path);
-
 	(void) path;
 	(void) fi;
 	tc_filehandle_t *fh;	
@@ -419,8 +425,9 @@ static int xmp_release(const char *path, struct fuse_file_info *fi)
 
 		free(fh->value);
 		free(fh);
+		
+		fi->fh = (uintptr_t)NULL;
 	}
-
 
 	return 0;
 }
@@ -486,6 +493,8 @@ static int xmp_removexattr(const char *path, const char *name)
 }
 #endif /* HAVE_SETXATTR */
 
+
+
 static struct fuse_operations xmp_oper = {
 	.getattr	= xmp_getattr,
 	.access		= xmp_access,
@@ -520,11 +529,6 @@ static struct fuse_operations xmp_oper = {
 int main(int argc, char *argv[])
 {
 	umask(0);
-
-	if (pthread_rwlock_init(&tc_iter_lock,NULL) != 0) {
-		fprintf(stderr, "can't init rwlock\n");
-		return -errno;
-	}
 
 	init_metadata();
 	return fuse_main(argc, argv, &xmp_oper, NULL);
