@@ -45,13 +45,15 @@ struct tc_filehandle {
 
 typedef struct tc_filehandle tc_filehandle_t;
 
+static pthread_t gc_thread;
+
 static int xmp_getattr(const char *path, struct stat *stbuf)
 {
 	if (is_tc(path))
 		tc_dir_stat(stbuf);
 	else if (is_parent_tc(path)) {
 		fprintf(stderr, "%s has tc parent\n", path);
-		tc_file_stat(stbuf, meta_filesize(path));
+		tc_file_stat(stbuf, tc_filesize(path));
 	}
 	else if (has_suffix(path, ".tc"))
 		tc_dir_stat(stbuf);
@@ -310,6 +312,9 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 		if (fh->value == NULL) {
 			fprintf(stderr, "tc_value returned NULL\n");
 			free(fh);
+
+
+			release_file(path);
 			return -errno;
 		}
 
@@ -427,6 +432,7 @@ static int xmp_release(const char *path, struct fuse_file_info *fi)
 		free(fh);
 		
 		fi->fh = (uintptr_t)NULL;
+		release_file(path);
 	}
 
 	return 0;
@@ -437,7 +443,7 @@ static int xmp_releasedir(const char *path, struct fuse_file_info *fi)
 {
 	fprintf(stderr, "releasing dir %s\n",path);
 
-	remove_path(path);
+	release_path(path);
 
 	(void) path;
 	(void) fi;
@@ -493,9 +499,40 @@ static int xmp_removexattr(const char *path, const char *name)
 }
 #endif /* HAVE_SETXATTR */
 
+static void *xmp_init(struct fuse_conn_info *conn)
+{
+	fprintf(stderr, "starting gc thread!\n");
+	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+
+	if (pthread_create(&gc_thread,  NULL, (void *)tc_gc, NULL) != 0) {
+		fprintf(stderr, "failed to create gc thread\n");
+		return (void *)-errno;
+	}
+
+
+
+	return 0;
+}
+
+static void xmp_destroy(void *userdata) 
+{
+	fprintf(stderr, "killing gc\n");
+	if (pthread_cancel(gc_thread) != 0) {
+		perror("pthread_cancel");
+		return;
+	}
+
+	fprintf(stderr, "joining gc thread\n");
+	pthread_join(gc_thread, NULL);
+	fprintf(stderr, "gc thread joined\n");
+
+	return;
+}
 
 
 static struct fuse_operations xmp_oper = {
+	.init		= xmp_init, 
+	.destroy	= xmp_destroy, 
 	.getattr	= xmp_getattr,
 	.access		= xmp_access,
 	.readlink	= xmp_readlink,
