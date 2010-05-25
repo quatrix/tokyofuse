@@ -40,7 +40,6 @@
 struct tc_filehandle {
 	char *value;
 	int value_len;
-	int refcount;
 };
 
 typedef struct tc_filehandle tc_filehandle_t;
@@ -100,8 +99,8 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	
 
 	if (is_tc(path)) {
-		tc_dir_meta_t *tc_dir;
-		tc_file_meta_t *tc_file;
+		tc_dir_meta_t *tc_dir = NULL;
+		tc_file_meta_t *tc_file = NULL;
 
 		fprintf(stderr, "'%s' is tc\n", path); 
 		
@@ -114,7 +113,7 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 		filler(buf, ".", NULL, 0);
 		filler(buf, "..", NULL, 0);
-
+/* 
 		for(tc_file=tc_dir->files; tc_file != NULL; tc_file=tc_file->hh.next) {
 			struct stat st;
 			tc_file_stat(&st, tc_file->size);
@@ -122,6 +121,17 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 			if (filler(buf, tc_file->path, &st, 0))
 				break;
 		}
+*/
+
+		for (tc_file=get_next_tc_file(tc_dir, tc_file); tc_file != NULL; tc_file = get_next_tc_file(tc_dir, tc_file)) {
+			struct stat st;
+			tc_file_stat(&st, tc_file->size);
+
+			if (filler(buf, tc_file->path, &st, 0))
+				break;
+		}
+
+		tc_dir_unlock(tc_dir);
 
 	
 	}
@@ -339,8 +349,8 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 	size_t value_len;
 	tc_filehandle_t *fh;	
 
-	//fprintf(stderr, "wants to read %s\n", path);
-	fprintf(stderr, "wants to read %d from %s (offset: %d)\n", size, path, offset);
+	fprintf(stderr, "wants to read %s\n", path);
+	//fprintf(stderr, "wants to read %d from %s (offset: %d)\n", size, path, offset);
 
 	if (is_parent_tc(path)) { 
 
@@ -420,6 +430,8 @@ static int xmp_release(const char *path, struct fuse_file_info *fi)
 	tc_filehandle_t *fh;	
 
 	if (is_parent_tc(path)) { 
+		release_file(path);
+
 		fh = (tc_filehandle_t *)(uintptr_t)fi->fh;
 	
 		if (fh == NULL)
@@ -432,7 +444,6 @@ static int xmp_release(const char *path, struct fuse_file_info *fi)
 		free(fh);
 		
 		fi->fh = (uintptr_t)NULL;
-		release_file(path);
 	}
 
 	return 0;

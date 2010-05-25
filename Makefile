@@ -1,7 +1,7 @@
 FLAGS=`pkg-config --cflags --libs fuse`
 FLAGS_O=`pkg-config --cflags fuse`
-CC=gcc -Wall -g 
-CC_O=gcc -Wall -g -c 
+CC=gcc -Wall -g -rdynamic 
+CC_O=gcc -Wall -g -c -rdynamic 
 
 all: tokyofuse testsuite
 
