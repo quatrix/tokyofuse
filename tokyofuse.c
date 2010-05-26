@@ -131,7 +131,7 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 				break;
 		}
 
-		tc_dir_unlock(tc_dir);
+		//tc_dir_unlock(tc_dir);
 
 	
 	}
