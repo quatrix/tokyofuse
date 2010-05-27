@@ -368,7 +368,7 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 	size_t value_len;
 	tc_filehandle_t *fh;	
 
-	fprintf(stderr, "wants to read %s\n", path);
+	fprintf(stderr, "wants to read %d bytes from %s\n", size, path);
 	//fprintf(stderr, "wants to read %d from %s (offset: %d)\n", size, path, offset);
 
 	if (is_parent_tc(path)) { 
@@ -383,6 +383,8 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 
 		value = fh->value + offset;
 		value_len = fh->value_len - offset;
+
+		fprintf(stderr, "value_len: %d\n", value_len);
 
 		if (value_len <= size) {
 			fprintf(stderr, "request bigger or equals to value_len (: %d) [writing: %d | requested: %d]\n", fh->value_len, fh->value_len, size);

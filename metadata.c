@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <execinfo.h>
+#include <sys/time.h>
 #include "uthash.h"
 #include "metadata.h"
 #include "utils.h"
@@ -16,6 +17,8 @@
 static tc_dir_meta_t *meta = NULL;
 static pthread_rwlock_t meta_lock;
 static pthread_mutex_t uid_lock;
+static pthread_mutex_t gc_mutex;
+static pthread_cond_t gc_cond;
 
 #if LOCK_DEBUG
 static char *str_locktype[] = { "write", "read" };
@@ -27,9 +30,10 @@ static inline int add_to_meta_hash(tc_dir_meta_t *);
 static inline int tc_dir_dec_refcount(tc_dir_meta_t *);
 static inline int metalock_lock(TC_LOCKTYPE);
 static inline int metalock_unlock(void);
-static inline int tc_dir_lock(tc_dir_meta_t *, TC_LOCKTYPE );
+static inline int tc_dir_lock(tc_dir_meta_t *);
 static inline int tc_dir_unlock(tc_dir_meta_t *);
 static inline size_t unique_id(void);
+static int wake_up_gc(void);
 
 
 int init_metadata(void)
@@ -44,6 +48,15 @@ int init_metadata(void)
 		return -errno;
 	}
 
+	if (pthread_mutex_init(&gc_mutex, NULL) != 0) {
+		fprintf(stderr, "can't init mutex gc_mutex\n");
+		return -errno;
+	}
+
+  	if (pthread_cond_init(&gc_cond, NULL) != 0) {
+		fprintf(stderr, "can't init condition gc_cond\n");
+		return -errno;
+	}
 
 	return 0;
 }
@@ -56,7 +69,7 @@ tc_dir_meta_t *add_path(const char *path)
 	tc_dir = open_tc(path);
 /* 
 	if (tc_dir != NULL) {
-		tc_dir_lock(tc_dir, TC_LOCK_WRITE);
+		tc_dir_lock(tc_dir);
 
 		if (tc_dir->files == NULL) {
 			if (create_file_hash(tc_dir) < 0) {
@@ -148,7 +161,7 @@ static inline int add_to_meta_hash(tc_dir_meta_t *tc_dir)
 tc_dir_meta_t *init_tc_dir(tc_dir_meta_t *tc_dir) 
 {
 	TCHDB *hdb 				= NULL;
-	int ecode;
+	int ecode, i, rc;
 
 	size_t path_len = strlen(tc_dir->path);
 	char tc_path[path_len + TC_PREFIX_LEN + 1];
@@ -162,12 +175,33 @@ tc_dir_meta_t *init_tc_dir(tc_dir_meta_t *tc_dir)
 		goto hdb_error;
 	}
 	
+	
 	fprintf(stderr, "opening hdb (%s)\n", tc_dir->path);
-	if (!tchdbopen(hdb, tc_path, HDBOREADER | HDBONOLCK)) {
-		ecode = tchdbecode(hdb);
-		fprintf(stderr, "open error: %s\n", tchdberrmsg(ecode));
-		goto hdb_error;
+
+	for (i = 0; i < TC_CABINET_TRIES; i++) {
+		rc = tchdbopen(hdb, tc_path, HDBOREADER | HDBONOLCK);
+
+		if (!rc) {
+			ecode = tchdbecode(hdb);
+
+			fprintf(stderr, "open error: %s (%s) [%d/%d]\n", tchdberrmsg(ecode), tc_dir->path, i, TC_CABINET_TRIES);
+
+			if (ecode == TCEMMAP) {
+				if (!wake_up_gc())
+					break;
+
+				usleep(TC_CABINET_USLEEP);
+			}
+			else 
+				break;
+		}
+		else 
+			break;
 	}
+
+	if (!rc)
+		goto hdb_error;
+
 	fprintf(stderr, "hdb opened (%s)\n", tc_dir->path);
 
 	tc_dir->hdb = hdb;
@@ -209,12 +243,12 @@ tc_dir_meta_t *allocate_tc_dir(const char *path)
 	tc_dir->refcount = 0;
 	tc_dir->initialized = 0;
 
-	if (pthread_rwlock_init(&tc_dir->lock, NULL) != 0) {
+	if (pthread_mutex_init(&tc_dir->lock, NULL) != 0) {
 		fprintf(stderr, "can't init rwlock for tc_dir\n");
 		goto free_tc_dir;
 	}
 
-	if (!tc_dir_lock(tc_dir, TC_LOCK_WRITE))
+	if (!tc_dir_lock(tc_dir))
 		goto free_tc_dir;
 
 	return tc_dir;
@@ -270,6 +304,7 @@ void free_tc_file(tc_file_meta_t *tc_file)
 	}
 }
 
+#if 0
 int create_file_hash(tc_dir_meta_t *tc_dir)
 {
 	tc_file_meta_t *tc_file = NULL;
@@ -318,6 +353,8 @@ int create_file_hash(tc_dir_meta_t *tc_dir)
 	return 0;
 }
 
+#endif 
+
 tc_dir_meta_t *lookup_path(const char *path)
 {
 	#if DEBUG
@@ -335,7 +372,7 @@ tc_dir_meta_t *lookup_path(const char *path)
 		fprintf(stderr, "found %s in hash\n", path);
 		#endif
 
-		tc_dir_lock(tc_dir, TC_LOCK_WRITE);
+		tc_dir_lock(tc_dir);
 
 		if (tc_dir->initialized) {
 			tc_dir->refcount++;
@@ -357,7 +394,7 @@ tc_dir_meta_t *lookup_path(const char *path)
 
 int tc_filesize(const char *path)
 {
-	int ecode, size;
+	int ecode, size, i;
 	char *parent = parent_path(path);
 	char *leaf = leaf_file(path);
 	tc_dir_meta_t *tc_dir;
@@ -370,14 +407,28 @@ int tc_filesize(const char *path)
 	if (tc_dir == NULL)
 		return -1;
 
-	//if (tc_dir->files == NULL) 
-		size = tchdbvsiz(tc_dir->hdb, leaf, strlen(leaf));
-	//else
-	//	size = tc_dir_get_filesize(tc_dir, leaf);
 
-	if (size == -1) {
-		ecode = tchdbecode(tc_dir->hdb);
-		fprintf(stderr, "vsize error: %s\n", tchdberrmsg(ecode));
+
+	for (i = 0; i <= TC_CABINET_TRIES; i++) {
+		size = tchdbvsiz(tc_dir->hdb, leaf, strlen(leaf));
+
+		if (size == -1) {
+			ecode = tchdbecode(tc_dir->hdb);
+
+			fprintf(stderr, "vsize error: %s (%s) [%d/%d]\n", tchdberrmsg(ecode), tc_dir->path, i, TC_CABINET_TRIES);
+
+			if (ecode == TCEMMAP) {
+				if (!wake_up_gc())
+					break;
+
+				usleep(TC_CABINET_USLEEP);
+			}
+			else  
+				break;
+			
+		}
+		else 
+			break;
 	}
 
 	if (!tc_dir_dec_refcount(tc_dir))
@@ -397,9 +448,9 @@ int tc_dir_get_filesize(tc_dir_meta_t *tc_dir, const char *path)
 int tc_value(const char *path, tc_filehandle_t *fh)
 {
 	tc_dir_meta_t *tc_dir;
-	int ecode;
-	char *value;
-	int value_len;
+	int ecode, i;
+	char *value = NULL;
+	int value_len = 0;
 	char *parent = parent_path(path);
 	char *leaf = leaf_file(path);
 
@@ -411,11 +462,30 @@ int tc_value(const char *path, tc_filehandle_t *fh)
 	if (tc_dir == NULL)
 		return 0;
 
-	value = tchdbget(tc_dir->hdb, leaf, strlen(leaf), &value_len);
 
-	if (value == NULL) {
-		ecode = tchdbecode(tc_dir->hdb);
-		fprintf(stderr, "getvalue error: %s\n", tchdberrmsg(ecode));
+
+	for (i = 0; i <= TC_CABINET_TRIES; i++) {
+		value = tchdbget(tc_dir->hdb, leaf, strlen(leaf), &value_len);
+
+		if (value == NULL) {
+			ecode = tchdbecode(tc_dir->hdb);
+
+			fprintf(stderr, "getvalue error: %s (%s) [%d/%d]\n", tchdberrmsg(ecode), tc_dir->path, i, TC_CABINET_TRIES);
+
+			if (ecode == TCEMMAP) {
+				if (!wake_up_gc())
+					break;
+
+				usleep(TC_CABINET_USLEEP);
+			}
+			else 
+				break;
+		}
+		else 
+			break;
+	}
+
+	if (value == NULL)  {
 		tc_dir_dec_refcount(tc_dir);
 		return 0;
 	}
@@ -462,7 +532,7 @@ static inline int tc_dir_dec_refcount(tc_dir_meta_t *tc_dir)
 
 	//fprintf(stderr, "trying to dec refcount for %s\n", tc_dir->path);
 
-	if (!tc_dir_lock(tc_dir, TC_LOCK_WRITE))
+	if (!tc_dir_lock(tc_dir))
 		return 0;
 	
 	tc_dir->refcount--;
@@ -529,7 +599,7 @@ void free_tc_dir(tc_dir_meta_t * tc_dir)
 
 
 		tc_dir_unlock(tc_dir);
-		pthread_rwlock_destroy(&tc_dir->lock);
+		pthread_mutex_destroy(&tc_dir->lock);
 
 		free(tc_dir);
 	}
@@ -546,44 +616,85 @@ void print_file_hash(tc_file_meta_t * tc_file)
 }
 */
 
+static int wake_up_gc(void)
+{
+	fprintf(stderr, "STARVING MARVIN!!!\n");
+
+	if (pthread_mutex_lock(&gc_mutex) != 0)
+		return 0;
+
+	if (pthread_cond_signal(&gc_cond) != 0)
+		return 0;
+
+	pthread_mutex_unlock(&gc_mutex);
+
+	return 1;
+}
+
+static struct timespec *set_next_gc(struct timespec *ts, size_t seconds)
+{
+	struct timeval tp;
+
+	if (gettimeofday(&tp, NULL) != 0)
+		return 0;
+
+	ts->tv_sec  = tp.tv_sec;
+    ts->tv_nsec = tp.tv_usec * 1000;
+    ts->tv_sec += seconds;
+
+	return ts;
+}
+
 void tc_gc(void *data)
 {
 	tc_dir_meta_t *tc_dir = NULL;
 	tc_dir_meta_t *tc_dir_next = NULL;
+	struct timespec ts;
 
 	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
 	while (true) {
-		fprintf(stderr, "ENTER THE COLLECTOR!!\n"); // always wanted to say that
+		if (pthread_mutex_lock(&gc_mutex) != 0)
+			continue;
+
+		pthread_cond_timedwait(&gc_cond, &gc_mutex, set_next_gc(&ts, TC_GC_SLEEP));
+
+		fprintf(stderr, "tc_gc: ENTER THE COLLECTOR!!\n"); // always wanted to say that
 		
+		fprintf(stderr, "tc_gc: meta hash has %d items\n", HASH_COUNT(meta));
+
 		for (tc_dir = meta; tc_dir != NULL; tc_dir = tc_dir_next) {
 			// in case we free tc_dir
 			tc_dir_next = tc_dir->hh.next;
 
-			if (!metalock_lock(TC_LOCK_WRITE))
-				return; // FIXME: actually, if we return, there no GC, fix this
+			// locks are non blocking
+			if (pthread_rwlock_trywrlock(&meta_lock) == 0) {
+				if (pthread_mutex_trylock(&tc_dir->lock) == 0) {
 
-			tc_dir_lock(tc_dir, TC_LOCK_WRITE);
+					fprintf(stderr, "tc_gc: refcount for %s is %d\n", tc_dir->path, tc_dir->refcount);
 
-			if (tc_dir->refcount ==  0) { 
-				fprintf(stderr, "refcount for %s is 0 -- freeing it\n", tc_dir->path);
+					if (tc_dir->refcount ==  0) { 
+						fprintf(stderr, "tc_gc: refcount for %s is 0 -- freeing it\n", tc_dir->path);
 
-				HASH_DEL(meta, tc_dir);
-			
-				free_tc_dir(tc_dir); // also unlocks
-			} 
-			else 
-				tc_dir_unlock(tc_dir);
-			
-			metalock_unlock();
+						HASH_DEL(meta, tc_dir);
+					
+						free_tc_dir(tc_dir); // also unlocks
+					} 
+					else 
+						tc_dir_unlock(tc_dir);
+				}
+				else 
+					fprintf(stderr, "tc_gc: can't lock tc_dir %s\n", tc_dir->path);
+				
+				metalock_unlock();
+			}
+			else
+				fprintf(stderr, "tc_gc: can't get meta lock\n");
 
 		}
-
-
-
+		pthread_mutex_unlock(&gc_mutex);
 		pthread_testcancel();
-		sleep(TC_GC_SLEEP);
 	}
 
 	fprintf(stderr, "gc loop exited\n");
@@ -664,13 +775,12 @@ static inline int metalock_unlock(void)
 	return 1;
 }
 
-static inline int tc_dir_lock(tc_dir_meta_t *tc_dir, TC_LOCKTYPE locktype)
+static inline int tc_dir_lock(tc_dir_meta_t *tc_dir)
 {
 #if LOCK_DEBUG
 	size_t uid = unique_id();
 	char *caller = get_caller();
 #endif
-	int l_rc = 0;
 	int rc = 0;
 
 	if (tc_dir != NULL) {
@@ -678,16 +788,7 @@ static inline int tc_dir_lock(tc_dir_meta_t *tc_dir, TC_LOCKTYPE locktype)
 		fprintf(stderr, "locking tc_dir %s (req: %u caller: %s type: %s)\n", tc_dir->path, uid, caller, str_locktype[locktype]);
 #endif
 
-		if (locktype == TC_LOCK_WRITE) 
-			l_rc = pthread_rwlock_wrlock(&tc_dir->lock);
-		else if (locktype == TC_LOCK_READ)
-			l_rc = pthread_rwlock_rdlock(&tc_dir->lock);
-		else {
-			fprintf(stderr, "unknown lock type specified\n");
-			goto free_caller;
-		}
-
-		if (l_rc == 0) {
+		if (pthread_mutex_lock(&tc_dir->lock) == 0) {
 #if LOCK_DEBUG
 			fprintf(stderr, "locking tc_dir %s (res: %u caller: %s type: %s)\n", tc_dir->path, uid, caller, str_locktype[locktype]);
 #endif
@@ -722,7 +823,7 @@ static inline int tc_dir_unlock(tc_dir_meta_t *tc_dir)
 		caller = get_caller();
 		fprintf(stderr, "unlocking tc_dir %s (caller: %s)\n", tc_dir->path, caller);
 #endif
-		pthread_rwlock_unlock(&tc_dir->lock);
+		pthread_mutex_unlock(&tc_dir->lock);
 #if LOCK_DEBUG
 		if (caller != NULL)
 			free(caller);

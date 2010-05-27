@@ -9,10 +9,13 @@
 
 #define TC_GC_SLEEP 5 // 5 seconds between every gc run
 
+#define TC_CABINET_TRIES 500
+#define TC_CABINET_USLEEP 30 // micro seconds
+
+
 struct tc_file_meta {
 	char *path;
 	size_t size;
-    UT_hash_handle hh; 
 };
 
 typedef struct tc_file_meta tc_file_meta_t;
@@ -22,7 +25,7 @@ struct tc_dir_meta {
 	struct tc_file_meta *files;
 	int refcount;
 	int initialized;
-	pthread_rwlock_t lock;
+	pthread_mutex_t lock;
 	TCHDB *hdb;
     UT_hash_handle hh; 
 };
@@ -68,6 +71,7 @@ int tc_value(const char *, tc_filehandle_t *);
 int create_file_hash(tc_dir_meta_t *);
 
 tc_file_meta_t *get_next_tc_file(tc_dir_meta_t *, tc_file_meta_t *);
+
 
 
 
