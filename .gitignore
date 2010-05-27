@@ -1,5 +1,9 @@
 *.swa
 *.swp
+*.swo
 *.o
+*.gcda
+*.gcno
+gmon.out
 testsuite
 tokyofuse

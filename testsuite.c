@@ -33,7 +33,7 @@ int main(int argc, char **argv)
 	ok(strcmp(leaf_file(parent), "ho") == 0, "leaf of /hey/ho is ho");
 
 	free(parent);
-
+/*
 	char *s;
 	s = to_tc_path("/baba/hey");
 	
@@ -41,7 +41,7 @@ int main(int argc, char **argv)
 	
 	s = to_tc_path(NULL);
 	ok(s == NULL, "null path returns null tc path");
-
+*/
 
 
 	return EXIT_SUCCESS;

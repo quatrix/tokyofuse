@@ -10,13 +10,27 @@
 #include "utils.h"
 #include "tc.h"
 
+#define LOCK_DEBUG 0
+#define DEBUG 0
 
 static tc_dir_meta_t *meta = NULL;
 static pthread_rwlock_t meta_lock;
 static pthread_mutex_t uid_lock;
 
+#if LOCK_DEBUG
 static char *str_locktype[] = { "write", "read" };
+#endif
+
 static size_t _uid = 0;
+
+static inline int add_to_meta_hash(tc_dir_meta_t *);
+static inline int tc_dir_dec_refcount(tc_dir_meta_t *);
+static inline int metalock_lock(TC_LOCKTYPE);
+static inline int metalock_unlock(void);
+static inline int tc_dir_lock(tc_dir_meta_t *, TC_LOCKTYPE );
+static inline int tc_dir_unlock(tc_dir_meta_t *);
+static inline size_t unique_id(void);
+
 
 int init_metadata(void)
 {
@@ -47,7 +61,7 @@ tc_dir_meta_t *add_path(const char *path)
 		if (tc_dir->files == NULL) {
 			if (create_file_hash(tc_dir) < 0) {
 				fprintf(stderr, "can't create file hash\n");
-				tc_dir_dec_refcount(tc_dir, 1);
+				tc_dir_dec_refcount(tc_dir);
 				tc_dir_unlock(tc_dir);
 				return NULL;
 			}
@@ -66,7 +80,7 @@ tc_dir_meta_t *open_tc(const char *path)
 	
 	fprintf(stderr, "adding %s to metadata hash\n", path);
 
-	if (!metalock_read_lock())
+	if (!metalock_lock(TC_LOCK_READ))
 		return NULL;
 
 	if ((tc_dir = lookup_path(path)) != NULL) {
@@ -79,7 +93,7 @@ tc_dir_meta_t *open_tc(const char *path)
 
 	// if key doesn't exist, lock for write
 
-	if (!metalock_write_lock())
+	if (!metalock_lock(TC_LOCK_WRITE))
 		return NULL;
 
 	// check again, since read locks allow multiple readers, 
@@ -92,7 +106,7 @@ tc_dir_meta_t *open_tc(const char *path)
 		goto return_tc;
 	}
 
-	fprintf(stderr, "looked it up, didn't find it (%s)\n", path);
+
 	tc_dir = allocate_tc_dir(path);
 
 	if (tc_dir == NULL)
@@ -114,6 +128,7 @@ tc_dir_meta_t *open_tc(const char *path)
 	}
 
 	tc_dir_unlock(tc_dir);
+	fprintf(stderr, "returning new tc_dir %s (refcount incs to %d)\n", path,  tc_dir->refcount);
 	return tc_dir;
 
 return_tc:
@@ -123,14 +138,9 @@ return_tc:
 }
 
 
-int add_to_meta_hash(tc_dir_meta_t *tc_dir)
+static inline int add_to_meta_hash(tc_dir_meta_t *tc_dir)
 {
-	//if (!metalock_write_lock())
-	//	return 0;
-
 	HASH_ADD_KEYPTR(hh, meta, tc_dir->path, strlen(tc_dir->path), tc_dir);
-
-	//metalock_unlock();
 
 	return 1;
 }
@@ -138,10 +148,12 @@ int add_to_meta_hash(tc_dir_meta_t *tc_dir)
 tc_dir_meta_t *init_tc_dir(tc_dir_meta_t *tc_dir) 
 {
 	TCHDB *hdb 				= NULL;
-	char *tc_path			= NULL;
 	int ecode;
 
-	tc_path = to_tc_path(tc_dir->path);
+	size_t path_len = strlen(tc_dir->path);
+	char tc_path[path_len + TC_PREFIX_LEN + 1];
+
+	to_tc_path(tc_dir->path, tc_path);
 
 	hdb = tchdbnew();
 	
@@ -158,7 +170,6 @@ tc_dir_meta_t *init_tc_dir(tc_dir_meta_t *tc_dir)
 	}
 	fprintf(stderr, "hdb opened (%s)\n", tc_dir->path);
 
-	free(tc_path); // FIXME duplicated code... 
 	tc_dir->hdb = hdb;
 
 	// if all successful, raise refcount
@@ -168,9 +179,6 @@ tc_dir_meta_t *init_tc_dir(tc_dir_meta_t *tc_dir)
 	return tc_dir;
 
 hdb_error:
-	if (tc_path != NULL)
-		free(tc_path);
-	
 	if (hdb != NULL)
 		tchdbdel(hdb);
 
@@ -312,7 +320,10 @@ int create_file_hash(tc_dir_meta_t *tc_dir)
 
 tc_dir_meta_t *lookup_path(const char *path)
 {
+	#if DEBUG
 	fprintf(stderr, "looking up %s\n", path);
+	#endif
+
 	tc_dir_meta_t *tc_dir = NULL;
 	tc_dir_meta_t *tc_dir_rc = NULL;
 
@@ -320,7 +331,10 @@ tc_dir_meta_t *lookup_path(const char *path)
 	HASH_FIND_STR(meta, path, tc_dir);
 
 	if (tc_dir != NULL) {
+		#if DEBUG
 		fprintf(stderr, "found %s in hash\n", path);
+		#endif
+
 		tc_dir_lock(tc_dir, TC_LOCK_WRITE);
 
 		if (tc_dir->initialized) {
@@ -328,7 +342,9 @@ tc_dir_meta_t *lookup_path(const char *path)
 			tc_dir_rc = tc_dir;
 		}
 		else {
+			#if DEBUG
 			fprintf(stderr, "found %s in hash - but it's not initialized\n", path);
+			#endif
 		}
 
 		tc_dir_unlock(tc_dir);
@@ -364,7 +380,7 @@ int tc_filesize(const char *path)
 		fprintf(stderr, "vsize error: %s\n", tchdberrmsg(ecode));
 	}
 
-	if (!tc_dir_dec_refcount(tc_dir, 1))
+	if (!tc_dir_dec_refcount(tc_dir))
 		return -1;
 
 	
@@ -378,11 +394,12 @@ int tc_dir_get_filesize(tc_dir_meta_t *tc_dir, const char *path)
 	return -1;
 }
 
-char *tc_value(const char *path, int *value_len)
+int tc_value(const char *path, tc_filehandle_t *fh)
 {
 	tc_dir_meta_t *tc_dir;
 	int ecode;
 	char *value;
+	int value_len;
 	char *parent = parent_path(path);
 	char *leaf = leaf_file(path);
 
@@ -392,58 +409,63 @@ char *tc_value(const char *path, int *value_len)
 	free(parent);
 
 	if (tc_dir == NULL)
-		return NULL;
+		return 0;
 
-	value = tchdbget(tc_dir->hdb, leaf, strlen(leaf), value_len);
+	value = tchdbget(tc_dir->hdb, leaf, strlen(leaf), &value_len);
 
 	if (value == NULL) {
 		ecode = tchdbecode(tc_dir->hdb);
 		fprintf(stderr, "getvalue error: %s\n", tchdberrmsg(ecode));
-	}
-	else {
-		fprintf(stderr, "fetched %s size: %d\n", leaf, *value_len);
+		tc_dir_dec_refcount(tc_dir);
+		return 0;
 	}
 
+	fh->value = value;
+	fh->value_len = value_len;
+	fh->tc_dir = tc_dir;
 
-	return value;
+	fprintf(stderr, "fetched %s size: %d\n", leaf, value_len);
+
+	return 1;
 }
 
 
 
 
 
-int release_path(const char *path)
+int release_path(tc_dir_meta_t *tc_dir)
 {
-	tc_dir_meta_t *tc_dir;
 	int rc = 0;
 
-	if (!metalock_read_lock())
+	if (tc_dir == NULL) {
+		fprintf(stderr, "tried to release path on NULL tc_dir\n");
+		return 0;
+	}
+
+	if (!metalock_lock(TC_LOCK_READ))
 		return 0;
 
-	tc_dir = lookup_path(path);
-
-	if (tc_dir != NULL)
-		if (tc_dir_dec_refcount(tc_dir, 2))
-			rc = 1;
+	if (tc_dir_dec_refcount(tc_dir))
+		rc = 1;
 
 	metalock_unlock();
 
 	return rc;
 }
 
-int tc_dir_dec_refcount(tc_dir_meta_t *tc_dir, int ref)
+static inline int tc_dir_dec_refcount(tc_dir_meta_t *tc_dir)
 {
 	if (tc_dir == NULL) {
 		fprintf(stderr, "tried to refrence dec a null tc_dir\n");
 		return 0;
 	}
 
-	fprintf(stderr, "trying to dec refcount for %s\n", tc_dir->path);
+	//fprintf(stderr, "trying to dec refcount for %s\n", tc_dir->path);
 
 	if (!tc_dir_lock(tc_dir, TC_LOCK_WRITE))
 		return 0;
 	
-	tc_dir->refcount -= ref;
+	tc_dir->refcount--;
 
 	tc_dir_unlock(tc_dir);
 
@@ -451,6 +473,7 @@ int tc_dir_dec_refcount(tc_dir_meta_t *tc_dir, int ref)
 	return 1;
 }
 
+/* 
 int release_file(const char *path)
 {
 	char *parent = parent_path(path);
@@ -464,7 +487,7 @@ int release_file(const char *path)
 
 	return 0;
 }
-
+*/
 
 void free_tc_dir(tc_dir_meta_t * tc_dir)
 {
@@ -525,20 +548,20 @@ void print_file_hash(tc_file_meta_t * tc_file)
 
 void tc_gc(void *data)
 {
-	tc_dir_meta_t *tc_dir;
+	tc_dir_meta_t *tc_dir = NULL;
+	tc_dir_meta_t *tc_dir_next = NULL;
 
 	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
 	while (true) {
 		fprintf(stderr, "ENTER THE COLLECTOR!!\n"); // always wanted to say that
+		
+		for (tc_dir = meta; tc_dir != NULL; tc_dir = tc_dir_next) {
+			// in case we free tc_dir
+			tc_dir_next = tc_dir->hh.next;
 
-
-
-		for (tc_dir = meta; tc_dir != NULL; tc_dir = tc_dir->hh.next) {
-			int freed = 0;
-
-			if (!metalock_write_lock())
+			if (!metalock_lock(TC_LOCK_WRITE))
 				return; // FIXME: actually, if we return, there no GC, fix this
 
 			tc_dir_lock(tc_dir, TC_LOCK_WRITE);
@@ -546,17 +569,11 @@ void tc_gc(void *data)
 			if (tc_dir->refcount ==  0) { 
 				fprintf(stderr, "refcount for %s is 0 -- freeing it\n", tc_dir->path);
 
-
 				HASH_DEL(meta, tc_dir);
 			
-
-				
 				free_tc_dir(tc_dir); // also unlocks
-				
-				freed = 1;
-			}
-
-			if (!freed)
+			} 
+			else 
 				tc_dir_unlock(tc_dir);
 			
 			metalock_unlock();
@@ -572,7 +589,7 @@ void tc_gc(void *data)
 	fprintf(stderr, "gc loop exited\n");
 }
 
-size_t unique_id(void)
+static inline size_t unique_id(void)
 {
 	size_t uid;
 
@@ -584,75 +601,82 @@ size_t unique_id(void)
 }
 
 
-
-int metalock_write_lock(void)
+static inline int metalock_lock(TC_LOCKTYPE locktype)
 {
+#if LOCK_DEBUG
 	size_t uid = unique_id();
 	char *caller = get_caller();
-	int rc = 1;
+#endif 
+	int rc = 0;
+	int l_rc = -1;
+	
+#if LOCK_DEBUG
+	fprintf(stderr, "locking meta (req: %u caller: %s type: %s)\n", uid, caller, str_locktype[locktype]);
+#endif
 
-	fprintf(stderr, "metalock write lock (req: %u caller: %s)\n", uid, caller);
-
-	if (pthread_rwlock_wrlock(&meta_lock) != 0) {
-		//fprintf(stderr, "can't lock write metalock\n");
-		perror("can't lock write metalock");
-		rc = 0;
+	if (locktype == TC_LOCK_WRITE) 
+		l_rc = pthread_rwlock_wrlock(&meta_lock);
+	else if (locktype == TC_LOCK_READ)
+		l_rc = pthread_rwlock_rdlock(&meta_lock);
+	else {
+		fprintf(stderr, "unknown lock type specified\n");
 		goto free_caller;
-
 	}
-	fprintf(stderr, "metalock write lock (res: %u caller: %s)\n", uid, caller);
+
+	if (l_rc == 0) {
+#if LOCK_DEBUG
+		fprintf(stderr, "locking meta (res: %u caller: %s type: %s)\n", uid, caller, str_locktype[locktype]);
+#endif
+		rc = 1;
+		goto free_caller;
+	}
+	else {
+		fprintf(stderr, "unable to lock meta\n");
+		goto free_caller;
+	}
 
 free_caller:
+#if LOCK_DEBUG
 	if (caller != NULL)
 		free(caller);
+#endif
 
 	return rc;
 }
 
-int metalock_read_lock(void)
+
+static inline int metalock_unlock(void)
 {
-	size_t uid = unique_id();
-	char *caller = get_caller();
-	int rc = 1;
-
-	fprintf(stderr, "metalock read lock (req: %u caller: %s)\n", uid, caller);
-
-	if (pthread_rwlock_rdlock(&meta_lock) != 0) {
-		//fprintf(stderr, "can't lock read metalock\n");
-		perror("can't lock read metalock");
-		rc = 0;
-		goto free_caller;
-	}
-	fprintf(stderr, "metalock read lock (res: %u caller: %s)\n", uid, caller);
-
-free_caller:
+#if LOCK_DEBUG
+	char *caller = NULL;
+	caller = get_caller();
+	fprintf(stderr, "unlocking metalock (caller: %s)\n",  caller);
 	if (caller != NULL)
 		free(caller);
-
-	return rc;
-}
-
-int metalock_unlock(void)
-{
-	fprintf(stderr, "metalock unlock\n");
+#endif
 
 	if (pthread_rwlock_unlock(&meta_lock) != 0) {
 		fprintf(stderr, "can't unlock metalock\n");
 		return 0;
 			
 	}
+
 	return 1;
 }
 
-int tc_dir_lock(tc_dir_meta_t *tc_dir, TC_LOCKTYPE locktype)
+static inline int tc_dir_lock(tc_dir_meta_t *tc_dir, TC_LOCKTYPE locktype)
 {
+#if LOCK_DEBUG
 	size_t uid = unique_id();
 	char *caller = get_caller();
+#endif
 	int l_rc = 0;
 	int rc = 0;
 
 	if (tc_dir != NULL) {
+#if LOCK_DEBUG
 		fprintf(stderr, "locking tc_dir %s (req: %u caller: %s type: %s)\n", tc_dir->path, uid, caller, str_locktype[locktype]);
+#endif
 
 		if (locktype == TC_LOCK_WRITE) 
 			l_rc = pthread_rwlock_wrlock(&tc_dir->lock);
@@ -664,7 +688,9 @@ int tc_dir_lock(tc_dir_meta_t *tc_dir, TC_LOCKTYPE locktype)
 		}
 
 		if (l_rc == 0) {
+#if LOCK_DEBUG
 			fprintf(stderr, "locking tc_dir %s (res: %u caller: %s type: %s)\n", tc_dir->path, uid, caller, str_locktype[locktype]);
+#endif
 			rc = 1;
 			goto free_caller;
 		}
@@ -676,22 +702,31 @@ int tc_dir_lock(tc_dir_meta_t *tc_dir, TC_LOCKTYPE locktype)
 	fprintf(stderr, "unable to lock tc_dir - it's null\n");
 
 free_caller:
+#if LOCK_DEBUG
 	if (caller != NULL)
 		free(caller);
+#endif 
 
 	return rc;
 }
 
-int tc_dir_unlock(tc_dir_meta_t *tc_dir)
+static inline int tc_dir_unlock(tc_dir_meta_t *tc_dir)
 {
 
+#if LOCK_DEBUG
 	char *caller = NULL;
+#endif
 
 	if (tc_dir != NULL) {
+#if LOCK_DEBUG
 		caller = get_caller();
 		fprintf(stderr, "unlocking tc_dir %s (caller: %s)\n", tc_dir->path, caller);
+#endif
 		pthread_rwlock_unlock(&tc_dir->lock);
-		free(caller);
+#if LOCK_DEBUG
+		if (caller != NULL)
+			free(caller);
+#endif
 		return 1;
 	}
 	else {

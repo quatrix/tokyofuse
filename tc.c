@@ -8,20 +8,23 @@
 #include "utils.h"
 
 
-char *to_tc_path(const char *path)
+
+char *to_tc_path(const char *path, char *dst_path)
 {
 	if (path == NULL)
 		return NULL;
-
+	
+/* 
 	char *tc_path;
 	size_t tc_path_len = strlen(path) + 4; // 4 for '.tc'
+
 	tc_path = malloc(tc_path_len * sizeof(char));
 
 	if (tc_path == NULL)
 		return NULL;
-
-	snprintf(tc_path, tc_path_len, "%s.tc", path);
-	return tc_path;
+ */
+	sprintf(dst_path, "%s.tc", path);
+	return dst_path;
 }
 
 void tc_dir_stat(struct stat *stbuf)
@@ -54,15 +57,19 @@ void tc_file_stat(struct stat *stbuf, size_t size)
 
 int is_tc(const char *path) 
 {
-	char *tc_path = to_tc_path(path);
-	int rc = 0;
+	if (path == NULL)
+		return 0;
+
+	size_t path_len = strlen(path);
+	char tc_path[path_len + TC_PREFIX_LEN + 1];
+
+	if (to_tc_path(path, tc_path) == NULL)
+		return 0;
 
 	if (file_exists(tc_path))
-		rc = 1;
-
-	free(tc_path);
+		return 1;
 		
-	return rc;
+	return 0;
 }
 
 int is_parent_tc(const char *path)

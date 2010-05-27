@@ -37,14 +37,19 @@
 #include "metadata.h"
 
 
-struct tc_filehandle {
-	char *value;
-	int value_len;
-};
 
-typedef struct tc_filehandle tc_filehandle_t;
 
 static pthread_t gc_thread;
+
+static inline tc_dir_meta_t *get_tc_dir(struct fuse_file_info *fi)
+{
+	return (tc_dir_meta_t *)(uintptr_t)fi->fh;
+}
+
+static inline tc_filehandle_t *get_tc_fh(struct fuse_file_info *fi)
+{
+	return (tc_filehandle_t *)(uintptr_t)fi->fh;
+}
 
 static int xmp_getattr(const char *path, struct stat *stbuf)
 {
@@ -88,19 +93,10 @@ static int xmp_readlink(const char *path, char *buf, size_t size)
 }
 
 
-static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-		       off_t offset, struct fuse_file_info *fi)
+static int xmp_opendir(const char *path, struct fuse_file_info *fi)
 {
-	DIR *dp;
-	struct dirent *de;
-
-	(void) offset;
-	(void) fi;
-	
-
 	if (is_tc(path)) {
 		tc_dir_meta_t *tc_dir = NULL;
-		tc_file_meta_t *tc_file = NULL;
 
 		fprintf(stderr, "'%s' is tc\n", path); 
 		
@@ -110,6 +106,34 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 			fprintf(stderr, "failed to open tc metadata for %s\n", path);
 			return -errno;
 		}
+
+		fi->fh = (uintptr_t)tc_dir;
+		return 0;
+	}
+
+
+	return 0;
+}
+
+
+static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+		       off_t offset, struct fuse_file_info *fi)
+{
+	DIR *dp;
+	struct dirent *de;
+
+	(void) offset;
+
+	if (is_tc(path)) {
+		tc_dir_meta_t *tc_dir = NULL;
+		tc_file_meta_t *tc_file = NULL;
+
+
+
+		tc_dir = get_tc_dir(fi);
+
+		if (tc_dir == NULL)
+			return -1;
 
 		filler(buf, ".", NULL, 0);
 		filler(buf, "..", NULL, 0);
@@ -133,7 +157,6 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 		//tc_dir_unlock(tc_dir);
 
-	
 	}
 	else {
 		dp = opendir(path);
@@ -317,14 +340,10 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 			return -errno;
 		}
 
-		fh->value = tc_value(path, &fh->value_len);
-
-		if (fh->value == NULL) {
-			fprintf(stderr, "tc_value returned NULL\n");
+		//fh->value = tc_value(path, &fh->value_len);
+		if (!tc_value(path, fh)) {
+			fprintf(stderr, "tc_value failed\n");
 			free(fh);
-
-
-			release_file(path);
 			return -errno;
 		}
 
@@ -354,8 +373,8 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 
 	if (is_parent_tc(path)) { 
 
+		fh = get_tc_fh(fi);
 
-		fh = (tc_filehandle_t *)(uintptr_t)fi->fh;
 		if (fh == NULL)
 			return -errno;
 
@@ -430,17 +449,16 @@ static int xmp_release(const char *path, struct fuse_file_info *fi)
 	tc_filehandle_t *fh;	
 
 	if (is_parent_tc(path)) { 
-		release_file(path);
+		fh = get_tc_fh(fi);
 
-		fh = (tc_filehandle_t *)(uintptr_t)fi->fh;
-	
 		if (fh == NULL)
 			return -errno;
 
-		if (fh->value == NULL)
-			return -errno;
+		if (fh->value != NULL)
+			free(fh->value);
 
-		free(fh->value);
+		release_path(fh->tc_dir);
+
 		free(fh);
 		
 		fi->fh = (uintptr_t)NULL;
@@ -452,9 +470,16 @@ static int xmp_release(const char *path, struct fuse_file_info *fi)
 
 static int xmp_releasedir(const char *path, struct fuse_file_info *fi)
 {
+	
 	fprintf(stderr, "releasing dir %s\n",path);
 
-	release_path(path);
+	tc_dir_meta_t *tc_dir = NULL;
+
+	tc_dir = get_tc_dir(fi);
+	
+	release_path(tc_dir);
+
+	fi->fh = (uintptr_t)NULL;
 
 	(void) path;
 	(void) fi;
@@ -547,6 +572,7 @@ static struct fuse_operations xmp_oper = {
 	.getattr	= xmp_getattr,
 	.access		= xmp_access,
 	.readlink	= xmp_readlink,
+	.opendir	= xmp_opendir,
 	.readdir	= xmp_readdir,
 	.mknod		= xmp_mknod,
 	.mkdir		= xmp_mkdir,

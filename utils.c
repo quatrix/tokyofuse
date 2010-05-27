@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include "utils.h"
 
 
@@ -35,12 +36,16 @@ char *leaf_file(const char *path)
 
 int file_exists(const char *path)
 {
-	struct stat stbuf;
+	//struct stat stbuf;
 	
+	if (access (path, F_OK) != -1)
+		return 1;
+	
+	/* 
 	if (stat(path, &stbuf) != -1)
 		if (S_ISREG(stbuf.st_mode))
 			return 1;
-
+ 	*/
 	return 0;
 }
 

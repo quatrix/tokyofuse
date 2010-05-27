@@ -1,7 +1,11 @@
 FLAGS=`pkg-config --cflags --libs fuse`
 FLAGS_O=`pkg-config --cflags fuse`
-CC=gcc -Wall -g -rdynamic 
-CC_O=gcc -Wall -g -c -rdynamic 
+#PROFILE=-pg -fprofile-arcs -ftest-coverage
+#CALLTRACE=-rdynamic
+CC=gcc --std=gnu99 -Wall -g $(CALLTRACE) $(PROFILE)
+CC_O=gcc --std=gnu99 -Wall -g -c $(CALLTRACE)  $(PROFILE)
+
+
 
 all: tokyofuse testsuite
 
@@ -25,3 +29,6 @@ test: testsuite
 
 clean:
 	rm -f *.o testsuite tokyofuse	
+
+clean_gprof:
+	rm -f gmon.out *.gcda *.gcno
