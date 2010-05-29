@@ -51,8 +51,13 @@ static inline tc_filehandle_t *get_tc_fh(struct fuse_file_info *fi)
 	return (tc_filehandle_t *)(uintptr_t)fi->fh;
 }
 
+static int i = 0;
 static int xmp_getattr(const char *path, struct stat *stbuf)
 {
+
+	if (++i == 9999)
+		exit(0);
+
 	if (is_tc(path))
 		tc_dir_stat(stbuf);
 	else if (is_parent_tc(path)) {
@@ -100,7 +105,7 @@ static int xmp_opendir(const char *path, struct fuse_file_info *fi)
 
 		fprintf(stderr, "'%s' is tc\n", path); 
 		
-		tc_dir = add_path(path);
+		tc_dir = open_tc(path);
 
 		if (tc_dir == NULL) {
 			fprintf(stderr, "failed to open tc metadata for %s\n", path);

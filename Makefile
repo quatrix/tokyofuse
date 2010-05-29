@@ -2,8 +2,9 @@ FLAGS=`pkg-config --cflags --libs fuse`
 FLAGS_O=`pkg-config --cflags fuse`
 #PROFILE=-pg -fprofile-arcs -ftest-coverage
 #CALLTRACE=-rdynamic
-CC=gcc --std=gnu99 -Wall -g $(CALLTRACE) $(PROFILE)
-CC_O=gcc --std=gnu99 -Wall -g -c $(CALLTRACE)  $(PROFILE)
+OPTIMIZE=-O3
+CC=gcc --std=gnu99 -Wall -g $(OPTIMIZE) $(CALLTRACE) $(PROFILE)
+CC_O=gcc --std=gnu99 -Wall -g -c $(OPTIMIZE) $(CALLTRACE) $(PROFILE)
 
 
 

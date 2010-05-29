@@ -9,27 +9,27 @@
 
 #define TC_GC_SLEEP 5 // 5 seconds between every gc run
 
-#define TC_CABINET_TRIES 500
+#define TC_CABINET_TRIES 500 // retries for tchdb* functions
 #define TC_CABINET_USLEEP 30 // micro seconds
 
-#define TC_RETRY_LOOP(hdb, path, cond, on_failure) \
-do {\
-	int i = 0, ecode = 0;\
-\
-	while (!(cond)) {\
-		ecode = tchdbecode(hdb); \
-\
-		fprintf(stderr, "%s error: %s (%s) [%d/%d]\n", #cond, tchdberrmsg(ecode), path, i, TC_CABINET_TRIES);\
-\
-		if (ecode != TCEMMAP || ++i == TC_CABINET_TRIES) {\
-			on_failure;\
-			break;\
-		}\
-\
-		wake_up_gc();\
-		usleep(TC_CABINET_USLEEP);\
-	}\
-\
+#define TC_RETRY_LOOP(hdb, path, cond, on_failure) 																\
+do {																											\
+	int i = 0, ecode = 0;																						\
+																												\
+	while (!(cond)) {																							\
+		ecode = tchdbecode((hdb));																				\
+																												\
+		fprintf(stderr, "%s error: %s (%s) [%d/%d]\n", #cond, tchdberrmsg(ecode), (path), i, TC_CABINET_TRIES);	\
+																												\
+		if (ecode != TCEMMAP || ++i == TC_CABINET_TRIES) {														\
+			on_failure;																							\
+			break;																								\
+		}																										\
+																												\
+		wake_up_gc();																							\
+		usleep(TC_CABINET_USLEEP);																				\
+	}																											\
+																												\
 } while (0)
 
 struct tc_file_meta {
@@ -61,41 +61,28 @@ typedef struct tc_filehandle tc_filehandle_t;
 
 
 typedef enum {
-	TC_LOCK_WRITE, 
-	TC_LOCK_READ
+	TC_LOCK_WRITE  		= 1,
+	TC_LOCK_READ		= 2,
+	TC_LOCK_DONT_UNLOCK = 4
 } TC_LOCKTYPE;
 
-
+typedef enum {
+	TC_ERROR,
+	TC_EXISTS,
+	TC_NOT_FOUND
+} TC_RC;
 
 int init_metadata(void);
 
-tc_dir_meta_t *allocate_tc_dir(const char *);
-tc_dir_meta_t *init_tc_dir(tc_dir_meta_t *);
-
-tc_dir_meta_t *add_path(const char *);
-tc_dir_meta_t *lookup_path(const char *);
 tc_dir_meta_t *open_tc(const char *);
-
-
 int release_path(tc_dir_meta_t *);
-
-void free_tc_dir(tc_dir_meta_t *);
-void free_tc_file(tc_file_meta_t *);
-
-
-int meta_filesize(const char *);
 int tc_filesize(const char *);
-int tc_dir_get_filesize(tc_dir_meta_t *, const char *);
 int tc_value(const char *, tc_filehandle_t *);
-int create_file_hash(tc_dir_meta_t *);
 
 tc_file_meta_t *get_next_tc_file(tc_dir_meta_t *, tc_file_meta_t *);
 
-
-
-
 void tc_gc(void *);
 
-char *get_caller(void);
+
 
 #endif

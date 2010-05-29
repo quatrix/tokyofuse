@@ -2,7 +2,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <unistd.h>
+#include <execinfo.h>
 #include "utils.h"
 
 
@@ -37,16 +39,23 @@ char *leaf_file(const char *path)
 int file_exists(const char *path)
 {
 	//struct stat stbuf;
-	
+/*	
 	if (access (path, F_OK) != -1)
 		return 1;
-	
+*/
+
+	int f = open(path, O_RDONLY);
+
+	if (f < 0 )
+		return 0;
+
+	close(f);	
 	/* 
 	if (stat(path, &stbuf) != -1)
 		if (S_ISREG(stbuf.st_mode))
 			return 1;
  	*/
-	return 0;
+	return 1;
 }
 
 int has_suffix(const char *s, const char *suffix)
@@ -82,4 +91,26 @@ char *remove_suffix(char *s, const char *suffix)
 	*(s + s_len - suffix_len) = '\0';
 
 	return s;
+}
+
+char *get_caller(void)
+{
+	void *array[3];
+	size_t size;
+	char **strings, *after_path = NULL, *caller = NULL;
+
+	size = backtrace(array, 3);
+	strings = backtrace_symbols(array, size);
+
+	if (size > 2) {
+		after_path = strchr(strings[2], '(');
+
+		if (after_path != NULL)
+			caller = strdup(after_path);
+			
+	}
+
+	free (strings);
+
+	return caller;
 }
