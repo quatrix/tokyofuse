@@ -8,6 +8,7 @@ int has_suffix(const char *, const char *);
 char *remove_suffix(char *, const char *);
 char *get_caller(void);
 struct timespec *future_time(struct timespec *, size_t );
+size_t unique_id(void);
 void debug(const char *, ...);
 
 #endif

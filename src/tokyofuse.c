@@ -547,7 +547,7 @@ static int xmp_removexattr(const char *path, const char *name)
 
 static void *xmp_init(struct fuse_conn_info *conn)
 {
-	if (!init_tc_gc(TC_GC_SLEEP)) {
+	if (!tc_gc_init(TC_GC_SLEEP)) {
 		debug("xmp_init: failed to init garbage collector\n");
 		return (void *)-1;
 	}

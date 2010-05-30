@@ -1,11 +1,10 @@
 #include <tchdb.h>
-#include <unistd.h>
 #include <string.h>
+#include <unistd.h>
+#include "tc_backend.h"
 #include "tc_gc.h"
 #include "utils.h"
 
-#define TC_CABINET_TRIES 500 // retries for tchdb* functions
-#define TC_CABINET_USLEEP 30 // micro seconds
 
 #define TC_RETRY_LOOP(hdb, path, cond, on_failure) 																\
 do {																											\
@@ -16,25 +15,26 @@ do {																											\
 																												\
 		debug("%s error: %s (%s) [%d/%d]\n", #cond, tchdberrmsg(ecode), (path), i, TC_CABINET_TRIES);			\
 																												\
-		if (ecode != TCEMMAP || ++i == TC_CABINET_TRIES) {														\
+		if (ecode != TCEMMAP || i++ == TC_CABINET_TRIES) {														\
 			on_failure;																							\
 			break;																								\
 		}																										\
 																												\
-		wake_up_gc();																							\
+		tc_gc_wake_up();																						\
 		usleep(TC_CABINET_USLEEP);																				\
 	}																											\
 																												\
 } while (0)
 
 
-TCHDB *open_tc(const char *path) {
+TCHDB *tc_open(const char *path) {
 	TCHDB *hdb = NULL;
 
 	if ((hdb = tchdbnew()) == NULL) {
 		debug("failed to create a new hdb object\n");
 		return NULL;
 	}
+
 
 	debug("opening hdb (%s)\n", path);
 
@@ -56,6 +56,9 @@ char *tc_get_next(TCHDB *hdb, const char *path, char *last_key,
 					int last_key_len, int *current_key_len, 
 					const char **fetched_data, int *fetched_data_len)
 {
+	if (hdb == NULL)
+		return NULL;
+
 	char *current_key = NULL;
 
 	TC_RETRY_LOOP(hdb, path, ( 
@@ -70,6 +73,9 @@ char *tc_get_next(TCHDB *hdb, const char *path, char *last_key,
 
 int tc_get_filesize(TCHDB *hdb, const char *path, const char *key)
 {
+	if (key == NULL || hdb == NULL)
+		return -1;
+
 	size_t key_len = strlen(key);
 	int size;
 
@@ -80,6 +86,9 @@ int tc_get_filesize(TCHDB *hdb, const char *path, const char *key)
 
 char *tc_get_value(TCHDB *hdb, const char *path,  const char *key, int *value_len)
 {
+	if (key == NULL || value_len == NULL || hdb == NULL)
+		return NULL;
+
 	size_t key_len = strlen(key);
 	char *value;
 
@@ -88,10 +97,20 @@ char *tc_get_value(TCHDB *hdb, const char *path,  const char *key, int *value_le
 	return value;
 }
 
+static inline bool _tchdbclose(TCHDB *hdb)
+{
+	tchdbdel(hdb);
+	return true;
+}
+
 int tc_close(TCHDB *hdb, const char *path)
 {
+	if (hdb == NULL)
+		return 0;
+
 	int rc = 0;
-	TC_RETRY_LOOP(hdb, path, tchdbclose(hdb),goto error);
+	TC_RETRY_LOOP(hdb, path, _tchdbclose(hdb),goto error);
+	
 	rc = 1;
 
 error:

@@ -132,6 +132,13 @@ struct timespec *future_time(struct timespec *ts, size_t seconds)
 	return ts;
 }
 
+size_t unique_id(void)
+{
+	static size_t uid = 0;
+
+	return uid++;
+}
+
 #define DEBUG 1
 
 #if DEBUG

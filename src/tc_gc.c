@@ -11,7 +11,7 @@ static pthread_cond_t gc_cond;
 static pthread_t gc_thread;
 
 
-int init_tc_gc(int gc_sleep)
+int tc_gc_init(int gc_sleep)
 {
 	if ((tc_gc_sleep = gc_sleep) <= 0) {
 		debug("init_tc_gc: gc_sleep must be above 0 seconds\n");
@@ -66,7 +66,7 @@ int tc_gc_destroy(void)
 	return 1;
 }
 
-int wake_up_gc(void)
+int tc_gc_wake_up(void)
 {
 	debug("STARVING MARVIN!!!\n");
 

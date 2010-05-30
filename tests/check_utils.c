@@ -71,14 +71,22 @@ START_TEST(test_future_time)
 	struct timeval tp;
 	struct timespec ts, ts_after_5;
 
-	fail_if(gettimeofday(&tp, NULL) != 0);
+	fail_if(gettimeofday(&tp, NULL) != 0, "can't get timeofday needed for test");
 
 	future_time(&ts, 0);
 	future_time(&ts_after_5, 5);
 
 	fail_unless(tp.tv_sec == ts.tv_sec, "future time 0 should be now");
-	fail_unless(ts.tv_sec - ts_after_5.tv_sec != 5, "time should be 5 seconds in the future");
+	fail_unless(ts_after_5.tv_sec - tp.tv_sec == 5, "time should be 5 seconds in the future");
 	
+}
+END_TEST
+
+START_TEST(test_unique_id)
+{
+	int i;
+	for (i = 0; i < 1000; i++)
+		fail_unless(unique_id() == i);
 }
 END_TEST
 
@@ -93,6 +101,7 @@ Suite *local_suite(void)
 	tcase_add_test(tc, test_file_exists);
 	tcase_add_test(tc, test_remove_suffix);
 	tcase_add_test(tc, test_future_time);
+	tcase_add_test(tc, test_unique_id);
 	suite_add_tcase(s, tc);
 
 	return s;

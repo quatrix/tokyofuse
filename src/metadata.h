@@ -2,6 +2,7 @@
 #define METADATA_H
 #include <tchdb.h>
 #include "uthash.h"
+#include "tc_dir.h"
 
 
 struct tc_file_meta {
@@ -11,17 +12,6 @@ struct tc_file_meta {
 
 typedef struct tc_file_meta tc_file_meta_t;
 
-struct tc_dir_meta {
-	const char *path;
-	struct tc_file_meta *files;
-	int refcount;
-	int initialized;
-	pthread_mutex_t lock;
-	TCHDB *hdb;
-    UT_hash_handle hh; 
-};
-
-typedef struct tc_dir_meta tc_dir_meta_t;
 
 struct tc_filehandle {
 	char *value;

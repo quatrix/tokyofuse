@@ -6,7 +6,7 @@
 #include "tc.h"
 
 
-static const char *fake_tc_file = "some_fake_tc_file.tc";
+static const char const *fake_tc_file = "some_fake_tc_file.tc";
 
 START_TEST(test_to_tc_path)
 {
@@ -48,7 +48,7 @@ START_TEST(test_is_tc)
 	fail_if(is_tc("some_fake_tc"), "some_fake_tc isn't tc");
 	fail_if(is_tc("fake_tc_file"), "fake_tc_file isn't tc");
 	fail_if(is_tc(""), "\"\" isn't tc");
-	fail_unless(is_tc(NULL) == NULL, "NULL path should return NULL");
+	fail_unless(is_tc(NULL) == 0, "NULL path should return 0");
 
 }
 END_TEST
@@ -58,7 +58,7 @@ START_TEST(test_is_parent_tc)
 	fail_unless(is_parent_tc("some_fake_tc_file/baba"), "some_fake_tc_file/baba has tc parent");
 	fail_if(is_parent_tc("some_fake_tc_file/baba/pita"), "some_fake_tc_file/baba/pita doesn't have a tc parent");
 	fail_if(is_parent_tc("some_fake_tc_file"), "some_fake_tc_file doesn't have a tc parent");
-	fail_unless(is_parent_tc(NULL) == NULL, "NULL path should return NULL");
+	fail_unless(is_parent_tc(NULL) == 0, "NULL path should return 0");
 
 
 }
