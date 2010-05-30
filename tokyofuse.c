@@ -33,13 +33,14 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include "utils.h"
+#include "tc_gc.h"
 #include "tc.h"
 #include "metadata.h"
 
 
 
+#define TC_GC_SLEEP 5 // 5 seconds between every gc run
 
-static pthread_t gc_thread;
 
 static inline tc_dir_meta_t *get_tc_dir(struct fuse_file_info *fi)
 {
@@ -51,12 +52,14 @@ static inline tc_filehandle_t *get_tc_fh(struct fuse_file_info *fi)
 	return (tc_filehandle_t *)(uintptr_t)fi->fh;
 }
 
-static int i = 0;
 static int xmp_getattr(const char *path, struct stat *stbuf)
 {
+#ifdef CACHEGRIND
+	static int i = 0;
 
 	if (++i == 9999)
 		exit(0);
+#endif
 
 	if (is_tc(path))
 		tc_dir_stat(stbuf);
@@ -105,7 +108,7 @@ static int xmp_opendir(const char *path, struct fuse_file_info *fi)
 
 		fprintf(stderr, "'%s' is tc\n", path); 
 		
-		tc_dir = open_tc(path);
+		tc_dir = get_tc(path);
 
 		if (tc_dir == NULL) {
 			fprintf(stderr, "failed to open tc metadata for %s\n", path);
@@ -544,32 +547,18 @@ static int xmp_removexattr(const char *path, const char *name)
 
 static void *xmp_init(struct fuse_conn_info *conn)
 {
-	fprintf(stderr, "starting gc thread!\n");
-	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
-
-	if (pthread_create(&gc_thread,  NULL, (void *)tc_gc, NULL) != 0) {
-		fprintf(stderr, "failed to create gc thread\n");
-		return (void *)-errno;
+	if (!init_tc_gc(TC_GC_SLEEP)) {
+		debug("xmp_init: failed to init garbage collector\n");
+		return (void *)-1;
 	}
 
-
-
-	return 0;
+	return (void *)0;
 }
 
 static void xmp_destroy(void *userdata) 
 {
-	fprintf(stderr, "killing gc\n");
-	if (pthread_cancel(gc_thread) != 0) {
-		perror("pthread_cancel");
-		return;
-	}
-
-	fprintf(stderr, "joining gc thread\n");
-	pthread_join(gc_thread, NULL);
-	fprintf(stderr, "gc thread joined\n");
-
-	return;
+	if (!tc_gc_destroy())
+		debug("xmp_destroy: failed to destroy garbage collector\n");
 }
 
 

@@ -5,6 +5,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <execinfo.h>
+#include <stdarg.h>
+#include <sys/time.h>
 #include "utils.h"
 
 
@@ -114,3 +116,35 @@ char *get_caller(void)
 
 	return caller;
 }
+
+
+struct timespec *future_time(struct timespec *ts, size_t seconds)
+{
+	struct timeval tp;
+
+	if (gettimeofday(&tp, NULL) != 0)
+		return 0;
+
+	ts->tv_sec  = tp.tv_sec;
+    ts->tv_nsec = tp.tv_usec * 1000;
+    ts->tv_sec += seconds;
+
+	return ts;
+}
+
+#define DEBUG 1
+
+#if DEBUG
+void debug(const char *format, ...) 
+{
+	va_list va;
+
+	va_start(va, format);
+
+	vfprintf(stderr, format, va);
+
+	va_end(va);
+}
+#else
+void debug(const char *format, ...) {}
+#endif

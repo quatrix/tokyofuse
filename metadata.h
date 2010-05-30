@@ -4,34 +4,6 @@
 #include "uthash.h"
 
 
-#define TC_UP_REFCOUNT 1
-#define TC_DONT_UP_REFCOUNT 0
-
-#define TC_GC_SLEEP 5 // 5 seconds between every gc run
-
-#define TC_CABINET_TRIES 500 // retries for tchdb* functions
-#define TC_CABINET_USLEEP 30 // micro seconds
-
-#define TC_RETRY_LOOP(hdb, path, cond, on_failure) 																\
-do {																											\
-	int i = 0, ecode = 0;																						\
-																												\
-	while (!(cond)) {																							\
-		ecode = tchdbecode((hdb));																				\
-																												\
-		fprintf(stderr, "%s error: %s (%s) [%d/%d]\n", #cond, tchdberrmsg(ecode), (path), i, TC_CABINET_TRIES);	\
-																												\
-		if (ecode != TCEMMAP || ++i == TC_CABINET_TRIES) {														\
-			on_failure;																							\
-			break;																								\
-		}																										\
-																												\
-		wake_up_gc();																							\
-		usleep(TC_CABINET_USLEEP);																				\
-	}																											\
-																												\
-} while (0)
-
 struct tc_file_meta {
 	char *path;
 	size_t size;
@@ -74,14 +46,14 @@ typedef enum {
 
 int init_metadata(void);
 
-tc_dir_meta_t *open_tc(const char *);
+tc_dir_meta_t *get_tc(const char *);
 int release_path(tc_dir_meta_t *);
 int tc_filesize(const char *);
 int tc_value(const char *, tc_filehandle_t *);
 
-tc_file_meta_t *get_next_tc_file(tc_dir_meta_t *, tc_file_meta_t *);
+void remove_unused_tc_dir(void);
 
-void tc_gc(void *);
+tc_file_meta_t *get_next_tc_file(tc_dir_meta_t *, tc_file_meta_t *);
 
 
 

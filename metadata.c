@@ -3,37 +3,21 @@
 #include <string.h>
 #include <pthread.h>
 #include <errno.h>
-#include <unistd.h>
 #include <sys/time.h>
-#include <stdarg.h>
 #include "uthash.h"
 #include "metadata.h"
 #include "utils.h"
+#include "tc_gc.h"
+#include "tc_backend.h"
 #include "tc.h"
 
-#define LOCK_DEBUG 0
-#define DEBUG 0
-
-#if DEBUG
-static inline void debug(const char *format, ...) 
-{
-	va_list va;
-
-	va_start(va, format);
-
-	vfprintf(stderr, format, va);
-
-	va_end(va);
-}
-#else
-static inline void debug(const char *format, ...) {}
-#endif
+#define LOCK_DEBUG 1
+#define DEBUG 1
 
 static tc_dir_meta_t *meta = NULL;
 static pthread_rwlock_t meta_lock;
 static pthread_mutex_t uid_lock;
-static pthread_mutex_t gc_mutex;
-static pthread_cond_t gc_cond;
+
 
 #if LOCK_DEBUG
 static char *str_locktype[] = { "", "write", "read", "", "", "write + dont_unlock", "read + dont_unlock" };
@@ -41,14 +25,13 @@ static char *str_locktype[] = { "", "write", "read", "", "", "write + dont_unloc
 
 static size_t _uid = 0;
 
-static inline int add_to_meta_hash(tc_dir_meta_t *);
+static inline void add_to_meta_hash(tc_dir_meta_t *);
 static inline int tc_dir_dec_refcount(tc_dir_meta_t *);
 static inline int metalock_lock(TC_LOCKTYPE);
 static inline int metalock_unlock(void);
 static inline int tc_dir_lock(tc_dir_meta_t *);
 static inline int tc_dir_unlock(tc_dir_meta_t *);
 static inline size_t unique_id(void);
-static int wake_up_gc(void);
 static TC_RC lookup_path(const char *, tc_dir_meta_t **, TC_LOCKTYPE);
 static tc_dir_meta_t *allocate_tc_dir(const char *);
 static tc_dir_meta_t *init_tc_dir(tc_dir_meta_t *);
@@ -68,21 +51,11 @@ int init_metadata(void)
 		return -errno;
 	}
 
-	if (pthread_mutex_init(&gc_mutex, NULL) != 0) {
-		debug("can't init mutex gc_mutex\n");
-		return -errno;
-	}
-
-  	if (pthread_cond_init(&gc_cond, NULL) != 0) {
-		debug("can't init condition gc_cond\n");
-		return -errno;
-	}
-
 	return 0;
 }
 
 
-tc_dir_meta_t *open_tc(const char *path)
+tc_dir_meta_t *get_tc(const char *path)
 {
 	tc_dir_meta_t *tc_dir = NULL;
 	
@@ -102,10 +75,9 @@ tc_dir_meta_t *open_tc(const char *path)
 
 	if ((tc_dir = allocate_tc_dir(path)) == NULL)
 		goto return_tc;
-	
-	if (!add_to_meta_hash(tc_dir)) 
-		goto destroy_tc_dir;
 
+	add_to_meta_hash(tc_dir);
+	
 	metalock_unlock();
 
 	if (init_tc_dir(tc_dir))
@@ -117,10 +89,6 @@ tc_dir_meta_t *open_tc(const char *path)
 
 	return tc_dir->initialized ? tc_dir : NULL;
 
-destroy_tc_dir:
-	free_tc_dir(tc_dir);
-	tc_dir = NULL;
-
 return_tc:
 	metalock_unlock();
 
@@ -128,47 +96,9 @@ return_tc:
 }
 
 
-static inline int add_to_meta_hash(tc_dir_meta_t *tc_dir)
+static inline void add_to_meta_hash(tc_dir_meta_t *tc_dir)
 {
 	HASH_ADD_KEYPTR(hh, meta, tc_dir->path, strlen(tc_dir->path), tc_dir);
-
-	return 1;
-}
-
-tc_dir_meta_t *init_tc_dir(tc_dir_meta_t *tc_dir) 
-{
-	size_t path_len = strlen(tc_dir->path);
-	char tc_path[path_len + TC_PREFIX_LEN + 1];
-
-	to_tc_path(tc_dir->path, tc_path);
-
-	tc_dir->hdb = tchdbnew();
-	
-	if (tc_dir->hdb == NULL) {
-		debug("failed to create a new hdb object\n");
-		goto hdb_error;
-	}
-	
-	
-	debug("opening hdb (%s)\n", tc_dir->path);
-
-	TC_RETRY_LOOP(tc_dir->hdb, tc_dir->path, tchdbopen(tc_dir->hdb, tc_path, HDBOREADER | HDBONOLCK), goto hdb_error);
-
-	debug("hdb opened (%s)\n", tc_dir->path);
-
-	// if all successful, raise refcount
-	tc_dir->refcount = 1; 
-	tc_dir->initialized = 1;
-
-	return tc_dir;
-
-hdb_error:
-	if (tc_dir->hdb != NULL)
-		tchdbdel(tc_dir->hdb);
-
-	tc_dir->hdb = NULL;
-
-	return NULL;
 }
 
 tc_dir_meta_t *allocate_tc_dir(const char *path)
@@ -187,10 +117,10 @@ tc_dir_meta_t *allocate_tc_dir(const char *path)
 		return NULL;
 	}
 
-	tc_dir->path 	 = strdup(path);
-	tc_dir->files    = NULL;
-	tc_dir->hdb      = NULL; 
-	tc_dir->refcount = 0;
+	tc_dir->path 	 	= strdup(path);
+	tc_dir->files    	= NULL;
+	tc_dir->hdb      	= NULL; 
+	tc_dir->refcount 	= 0;
 	tc_dir->initialized = 0;
 
 	if (pthread_mutex_init(&tc_dir->lock, NULL) != 0) {
@@ -208,6 +138,25 @@ free_tc_dir:
 	return NULL;
 }
 
+tc_dir_meta_t *init_tc_dir(tc_dir_meta_t *tc_dir) 
+{
+	size_t path_len = strlen(tc_dir->path);
+	char tc_path[path_len + TC_PREFIX_LEN + 1];
+
+	to_tc_path(tc_dir->path, tc_path);
+
+	if ((tc_dir->hdb = open_tc(tc_path)) == NULL)
+		return NULL;
+
+	// if all successful, raise refcount
+	tc_dir->refcount 	= 1; 
+	tc_dir->initialized	= 1;
+
+	return tc_dir;
+}
+
+
+
 tc_file_meta_t *get_next_tc_file(tc_dir_meta_t *tc_dir, tc_file_meta_t *last_tc_file)
 {
 	tc_file_meta_t *tc_file = NULL;
@@ -219,13 +168,10 @@ tc_file_meta_t *get_next_tc_file(tc_dir_meta_t *tc_dir, tc_file_meta_t *last_tc_
 	int fetched_data_len = 0;
 	int current_key_len = 0;
 
-	
-	TC_RETRY_LOOP(tc_dir->hdb, tc_dir->path, ( 
-				current_key = tchdbgetnext3(tc_dir->hdb, 
-				last_key, last_key_len, 
-				&current_key_len, &fetched_data, 
-				&fetched_data_len)) != NULL, 
-			break);
+	current_key = tc_get_next(tc_dir->hdb, tc_dir->path, 
+					last_key, last_key_len, 
+					&current_key_len, &fetched_data,  
+					&fetched_data_len);
 
 	free_tc_file(last_tc_file);
 
@@ -245,6 +191,8 @@ tc_file_meta_t *get_next_tc_file(tc_dir_meta_t *tc_dir, tc_file_meta_t *last_tc_
 
 	return tc_file;
 }
+
+
 
 static void free_tc_file(tc_file_meta_t *tc_file)
 {
@@ -298,18 +246,21 @@ int tc_filesize(const char *path)
 {
 	int size;
 	char *parent = parent_path(path);
-	char *leaf = leaf_file(path);
+	const char *leaf = leaf_file(path);
 	tc_dir_meta_t *tc_dir;
 
 	debug("fetching filesize for %s/%s\n", parent, leaf);
 	
-	tc_dir = open_tc(parent);
+	tc_dir = get_tc(parent);
 	free(parent);
 
 	if (tc_dir == NULL)
 		return -1;
 
-	TC_RETRY_LOOP(tc_dir->hdb, tc_dir->path, (size = tchdbvsiz(tc_dir->hdb, leaf, strlen(leaf))) != -1, break);
+
+	size = tc_get_filesize(tc_dir->hdb, tc_dir->path, leaf);
+
+
 
 	if (!tc_dir_dec_refcount(tc_dir))
 		return -1;
@@ -319,25 +270,24 @@ int tc_filesize(const char *path)
 }
 
 
+
 int tc_value(const char *path, tc_filehandle_t *fh)
 {
 	tc_dir_meta_t *tc_dir;
 	char *value = NULL;
 	int value_len = 0;
 	char *parent = parent_path(path);
-	char *leaf = leaf_file(path);
+	const char *leaf = leaf_file(path);
 
 	debug("fetching value for %s/%s\n", parent, leaf);
 
-	tc_dir = open_tc(parent);
+	tc_dir = get_tc(parent);
 	free(parent);
 
 	if (tc_dir == NULL)
 		return 0;
 
-	TC_RETRY_LOOP(tc_dir->hdb, tc_dir->path, ( value = tchdbget(tc_dir->hdb, leaf, strlen(leaf), &value_len) ) != NULL, break);
-
-	if (value == NULL)  {
+	if ((value = tc_get_value(tc_dir->hdb, tc_dir->path, leaf, &value_len)) == NULL) {
 		tc_dir_dec_refcount(tc_dir);
 		return 0;
 	}
@@ -350,6 +300,7 @@ int tc_value(const char *path, tc_filehandle_t *fh)
 
 	return 1;
 }
+
 
 int release_path(tc_dir_meta_t *tc_dir)
 {
@@ -397,7 +348,7 @@ void free_tc_dir(tc_dir_meta_t * tc_dir)
 		if (tc_dir->hdb != NULL) {
 			debug("closing hdb (%s)\n", tc_dir->path);
 
-			TC_RETRY_LOOP(tc_dir->hdb, tc_dir->path, tchdbclose(tc_dir->hdb),break);
+			tc_close(tc_dir->hdb, tc_dir->path);
 
 			tchdbdel(tc_dir->hdb);
 			tc_dir->hdb = NULL;
@@ -417,84 +368,6 @@ void free_tc_dir(tc_dir_meta_t * tc_dir)
 		debug("asked to free a NULL tc_dir\n");
 }
 
-static int wake_up_gc(void)
-{
-	debug("STARVING MARVIN!!!\n");
-
-	if (pthread_mutex_lock(&gc_mutex) != 0)
-		return 0;
-
-	if (pthread_cond_signal(&gc_cond) != 0)
-		return 0;
-
-	pthread_mutex_unlock(&gc_mutex);
-
-	return 1;
-}
-
-static struct timespec *set_next_gc(struct timespec *ts, size_t seconds)
-{
-	struct timeval tp;
-
-	if (gettimeofday(&tp, NULL) != 0)
-		return 0;
-
-	ts->tv_sec  = tp.tv_sec;
-    ts->tv_nsec = tp.tv_usec * 1000;
-    ts->tv_sec += seconds;
-
-	return ts;
-}
-
-void tc_gc(void *data)
-{
-		tc_dir_meta_t *tc_dir = NULL;
-		tc_dir_meta_t *tc_dir_next = NULL;
-		struct timespec ts;
-
-		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
-		pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
-
-		while (true) {
-			if (pthread_mutex_lock(&gc_mutex) != 0)
-				continue;
-
-			pthread_cond_timedwait(&gc_cond, &gc_mutex, set_next_gc(&ts, TC_GC_SLEEP));
-
-			debug("tc_gc: ENTER THE COLLECTOR!!\n"); // always wanted to say that
-			
-			for (tc_dir = meta; tc_dir != NULL; tc_dir = tc_dir_next) {
-				// in case we free tc_dir
-				tc_dir_next = tc_dir->hh.next;
-
-				if (pthread_rwlock_trywrlock(&meta_lock) == 0) {
-					if (pthread_mutex_trylock(&tc_dir->lock) == 0) {
-
-						if (tc_dir->refcount ==  0) { 
-							debug("tc_gc: refcount for %s is 0 -- freeing it\n", tc_dir->path);
-
-							HASH_DEL(meta, tc_dir);
-
-							// FIXME: can't unlock metalock here:
-							// must wait for free_tc to finish 
-							// new hdb might be opened before current closes (threading error)
-
-							free_tc_dir(tc_dir); 
-						} 
-						else 
-							tc_dir_unlock(tc_dir);
-					}
-					
-					metalock_unlock();
-				}
-
-			}
-			pthread_mutex_unlock(&gc_mutex);
-			pthread_testcancel();
-		}
-
-		debug("gc loop exited\n");
-}
 
 static inline size_t unique_id(void)
 {
@@ -633,4 +506,36 @@ static inline int tc_dir_unlock(tc_dir_meta_t *tc_dir)
 }
 
 
+void remove_unused_tc_dir(void)
+{
+	tc_dir_meta_t *tc_dir = NULL;
+	tc_dir_meta_t *tc_dir_next = NULL;
 
+	for (tc_dir = meta; tc_dir != NULL; tc_dir = tc_dir_next) {
+		// in case we free tc_dir
+		tc_dir_next = tc_dir->hh.next;
+
+		if (pthread_rwlock_trywrlock(&meta_lock) == 0) {
+			if (pthread_mutex_trylock(&tc_dir->lock) == 0) {
+
+				if (tc_dir->refcount ==  0) { 
+					debug("remove_unused_tc_dir: refcount for %s is 0 -- freeing it\n", tc_dir->path);
+
+					HASH_DEL(meta, tc_dir);
+
+					// FIXME: can't unlock metalock here:
+					// must wait for free_tc to finish 
+					// new hdb might be opened before current closes (threading error)
+
+					free_tc_dir(tc_dir); 
+				} 
+				else 
+					tc_dir_unlock(tc_dir);
+			}
+			
+			metalock_unlock();
+		}
+
+	}
+
+}
