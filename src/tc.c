@@ -14,15 +14,6 @@ char *to_tc_path(const char *path, char *dst_path)
 	if (path == NULL)
 		return NULL;
 	
-/* 
-	char *tc_path;
-	size_t tc_path_len = strlen(path) + 4; // 4 for '.tc'
-
-	tc_path = malloc(tc_path_len * sizeof(char));
-
-	if (tc_path == NULL)
-		return NULL;
- */
 	sprintf(dst_path, "%s.tc", path);
 	return dst_path;
 }

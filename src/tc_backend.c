@@ -14,7 +14,7 @@ do {																											\
 	while (!(cond)) {																							\
 		ecode = tchdbecode((hdb));																				\
 																												\
-		debug("%s error: %s (%s) [%d/%d]\n", #cond, tchdberrmsg(ecode), (path), i, TC_CABINET_TRIES);	\
+		debug("%s error: %s (%s) [%d/%d]\n", #cond, tchdberrmsg(ecode), (path), i, TC_CABINET_TRIES);			\
 																												\
 		if (ecode != TCEMMAP || ++i == TC_CABINET_TRIES) {														\
 			on_failure;																							\
