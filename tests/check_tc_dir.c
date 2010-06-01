@@ -5,6 +5,7 @@
 #include "tc_dir.h"
 
 static const char *tc_test_file = "tc_backend_test";
+static const char *tc_test_file_tc = "tc_backend_test.tc";
 static const char *fake_tc_file = "fake_tc_file";
 static tc_dir_meta_t *tc_dir = NULL;
 static tc_dir_meta_t *tc_dir_broken = NULL;
@@ -12,7 +13,7 @@ static tc_dir_meta_t *tc_dir_broken = NULL;
 
 int tc_open(const char *path)
 {
-	if (strcmp(path, "tc_backend_test.tc") == 0)
+	if (strcmp(path, tc_test_file_tc) == 0)
 		return 1;
 
 	return 0;
@@ -73,6 +74,38 @@ START_TEST(test_tc_dir_init)
 }
 END_TEST
 
+
+
+START_TEST(test_tc_dir_dec_refcount)
+{
+	fail("not tested");
+}
+END_TEST
+
+
+START_TEST(test_tc_dir_lock)
+{
+	fail("not tested");
+
+}
+END_TEST
+
+
+START_TEST(test_tc_dir_unlock)
+{
+	fail("not tested");
+}
+END_TEST
+
+
+START_TEST(test_tc_dir_free)
+{
+	fail("not tested");
+}
+END_TEST
+
+
+
 Suite *local_suite(void)
 {
 	Suite *s = suite_create("tc_dir");
@@ -80,6 +113,10 @@ Suite *local_suite(void)
 	TCase *tc = tcase_create("tc_dir");
 	tcase_add_test(tc, test_tc_dir_allocate);
 	tcase_add_test(tc, test_tc_dir_init);
+	//tcase_add_test(tc, test_tc_dir_dec_refcount);
+	//tcase_add_test(tc, test_tc_dir_lock);
+	//tcase_add_test(tc, test_tc_dir_unlock);
+	//tcase_add_test(tc, test_tc_dir_free);
 	suite_add_tcase(s, tc);
 
 	return s;

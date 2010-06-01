@@ -35,7 +35,15 @@ char *parent_path(const char *path)
 
 char *leaf_file(const char *path)
 {
-	return strrchr(path, '/') + 1;
+	char *l = NULL;
+
+	if (path == NULL)
+		return NULL;
+	
+	if ((l = strrchr(path, '/')) != NULL)
+		return l+1;
+
+	return NULL;
 }
 
 int file_exists(const char *path)
@@ -139,7 +147,7 @@ size_t unique_id(void)
 	return uid++;
 }
 
-#define DEBUG 1
+#define DEBUG 0
 
 #if DEBUG
 void debug(const char *format, ...) 
@@ -149,6 +157,7 @@ void debug(const char *format, ...)
 	va_start(va, format);
 
 	vfprintf(stderr, format, va);
+	fprintf(stderr, "\n");
 
 	va_end(va);
 }

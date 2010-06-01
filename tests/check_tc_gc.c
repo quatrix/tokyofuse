@@ -10,7 +10,7 @@
 volatile static int counter = 0;
 
 // mocked 
-int remove_unused_tc_dir(void)
+int metadata_free_unused_tc_dir(void)
 {
 	counter++;
 }

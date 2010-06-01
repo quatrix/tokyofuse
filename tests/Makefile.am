@@ -1,5 +1,5 @@
-TESTS = check_utils check_tc check_tc_backend check_tc_gc check_tc_dir
-check_PROGRAMS = check_utils check_tc check_tc_backend check_tc_gc check_tc_dir
+TESTS = check_utils check_tc check_tc_backend check_tc_gc check_tc_dir check_metadata
+check_PROGRAMS = check_utils check_tc check_tc_backend check_tc_gc check_tc_dir check_metadata
 
 AM_CFLAGS = -I../src
 
@@ -24,6 +24,6 @@ check_tc_dir_SOURCES = check_tc_dir.c $(top_builddir)/src/utils.h $(top_builddir
 check_tc_dir_CFLAGS = @CHECK_CFLAGS@ $(AM_CFLAGS)
 check_tc_dir_LDADD =  @CHECK_LIBS@
 
-#check_metadata_SOURCES = check_metadata.c $(top_builddir)/src/utils.h $(top_builddir)/src/utils.c $(top_builddir)/src/tc_backend.c $(top_builddir)/src/tc_backend.h $(top_builddir)/src/metdata.h $(top_builddir)/src/tc_gc.c $(top_builddir)/src/tc_gc.h $(top_builddir)/src/tc.c $(top_builddir)/src/tc.h
-#check_metadata_CFLAGS = @CHECK_CFLAGS@ $(AM_CFLAGS)
-#check_metadata_LDADD =  @CHECK_LIBS@ -ltokyocabinet
+check_metadata_SOURCES = check_metadata.c $(top_builddir)/src/utils.h $(top_builddir)/src/utils.c $(top_builddir)/src/tc_backend.c $(top_builddir)/src/tc_backend.h $(top_builddir)/src/metdata.h $(top_builddir)/src/tc.c $(top_builddir)/src/tc.h $(top_builddir)/src/metadata.c $(top_builddir)/src/metadata.h $(top_builddir)/src/tc_dir.c $(top_builddir)/src/tc_dir.h
+check_metadata_CFLAGS = @CHECK_CFLAGS@ $(AM_CFLAGS)
+check_metadata_LDADD =  @CHECK_LIBS@ -ltokyocabinet

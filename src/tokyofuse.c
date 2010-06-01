@@ -42,12 +42,12 @@
 #define TC_GC_SLEEP 5 // 5 seconds between every gc run
 
 
-static inline tc_dir_meta_t *get_tc_dir(struct fuse_file_info *fi)
+static inline tc_dir_meta_t *tokyofuse_get_tc_dir(struct fuse_file_info *fi)
 {
 	return (tc_dir_meta_t *)(uintptr_t)fi->fh;
 }
 
-static inline tc_filehandle_t *get_tc_fh(struct fuse_file_info *fi)
+static inline tc_filehandle_t *tokyofuse_get_tc_fh(struct fuse_file_info *fi)
 {
 	return (tc_filehandle_t *)(uintptr_t)fi->fh;
 }
@@ -65,7 +65,7 @@ static int xmp_getattr(const char *path, struct stat *stbuf)
 		tc_dir_stat(stbuf);
 	else if (is_parent_tc(path)) {
 		fprintf(stderr, "%s has tc parent\n", path);
-		tc_file_stat(stbuf, tc_filesize(path));
+		tc_file_stat(stbuf, metadata_get_filesize(path));
 	}
 	else if (has_suffix(path, ".tc"))
 		tc_dir_stat(stbuf);
@@ -108,7 +108,7 @@ static int xmp_opendir(const char *path, struct fuse_file_info *fi)
 
 		fprintf(stderr, "'%s' is tc\n", path); 
 		
-		tc_dir = get_tc(path);
+		tc_dir = metadata_get_tc(path);
 
 		if (tc_dir == NULL) {
 			fprintf(stderr, "failed to open tc metadata for %s\n", path);
@@ -138,7 +138,7 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 
 
-		tc_dir = get_tc_dir(fi);
+		tc_dir = tokyofuse_get_tc_dir(fi);
 
 		if (tc_dir == NULL)
 			return -1;
@@ -348,9 +348,9 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 			return -errno;
 		}
 
-		//fh->value = tc_value(path, &fh->value_len);
-		if (!tc_value(path, fh)) {
-			fprintf(stderr, "tc_value failed\n");
+		//fh->value = metadata_get_value(path, &fh->value_len);
+		if (!metadata_get_value(path, fh)) {
+			fprintf(stderr, "metadata_get_value failed\n");
 			free(fh);
 			return -errno;
 		}
@@ -381,7 +381,7 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 
 	if (is_parent_tc(path)) { 
 
-		fh = get_tc_fh(fi);
+		fh = tokyofuse_get_tc_fh(fi);
 
 		if (fh == NULL)
 			return -errno;
@@ -459,7 +459,7 @@ static int xmp_release(const char *path, struct fuse_file_info *fi)
 	tc_filehandle_t *fh;	
 
 	if (is_parent_tc(path)) { 
-		fh = get_tc_fh(fi);
+		fh = tokyofuse_get_tc_fh(fi);
 
 		if (fh == NULL)
 			return -errno;
@@ -467,7 +467,7 @@ static int xmp_release(const char *path, struct fuse_file_info *fi)
 		if (fh->value != NULL)
 			free(fh->value);
 
-		release_path(fh->tc_dir);
+		metadata_release_path(fh->tc_dir);
 
 		free(fh);
 		
@@ -485,9 +485,9 @@ static int xmp_releasedir(const char *path, struct fuse_file_info *fi)
 
 	tc_dir_meta_t *tc_dir = NULL;
 
-	tc_dir = get_tc_dir(fi);
+	tc_dir = tokyofuse_get_tc_dir(fi);
 	
-	release_path(tc_dir);
+	metadata_release_path(tc_dir);
 
 	fi->fh = (uintptr_t)NULL;
 
@@ -548,7 +548,7 @@ static int xmp_removexattr(const char *path, const char *name)
 static void *xmp_init(struct fuse_conn_info *conn)
 {
 	if (!tc_gc_init(TC_GC_SLEEP)) {
-		debug("xmp_init: failed to init garbage collector\n");
+		debug("xmp_init: failed to init garbage collector");
 		return (void *)-1;
 	}
 
@@ -558,7 +558,7 @@ static void *xmp_init(struct fuse_conn_info *conn)
 static void xmp_destroy(void *userdata) 
 {
 	if (!tc_gc_destroy())
-		debug("xmp_destroy: failed to destroy garbage collector\n");
+		debug("xmp_destroy: failed to destroy garbage collector");
 }
 
 
@@ -600,6 +600,8 @@ int main(int argc, char *argv[])
 {
 	umask(0);
 
-	init_metadata();
+	if (!metadata_init())
+		return 1;
+
 	return fuse_main(argc, argv, &xmp_oper, NULL);
 }

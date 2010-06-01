@@ -13,7 +13,7 @@ do {																											\
 	while (!(cond)) {																							\
 		ecode = tchdbecode((hdb));																				\
 																												\
-		debug("%s error: %s (%s) [%d/%d]\n", #cond, tchdberrmsg(ecode), (path), i, TC_CABINET_TRIES);			\
+		debug("%s error: %s (%s) [%d/%d]", #cond, tchdberrmsg(ecode), (path), i, TC_CABINET_TRIES);				\
 																												\
 		if (ecode != TCEMMAP || i++ == TC_CABINET_TRIES) {														\
 			on_failure;																							\
@@ -31,16 +31,16 @@ TCHDB *tc_open(const char *path) {
 	TCHDB *hdb = NULL;
 
 	if ((hdb = tchdbnew()) == NULL) {
-		debug("failed to create a new hdb object\n");
+		debug("failed to create a new hdb object");
 		return NULL;
 	}
 
 
-	debug("opening hdb (%s)\n", path);
+	debug("opening hdb (%s)", path);
 
 	TC_RETRY_LOOP(hdb, path, tchdbopen(hdb, path, HDBOREADER | HDBONOLCK), goto hdb_error);
 
-	debug("hdb opened (%s)\n", path);
+	debug("hdb opened (%s)", path);
 
 	return hdb;
 

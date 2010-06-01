@@ -43,6 +43,8 @@ START_TEST(test_leaf_file)
 	fail_unless(strcmp(leaf_file("/hey/ho"), "ho") == 0, "leaf of /hey/ho is ho");
 	fail_unless(strcmp(leaf_file("hey/ho"), "ho") == 0, "leaf of /hey/ho is ho");
 	fail_unless(strcmp(leaf_file("/"), "") == 0, "leaf of /hey/ho is ho");
+	fail_unless(leaf_file("heya") == NULL, "leaf of string w/o '/' should return NULL");
+	fail_unless(leaf_file(NULL) == NULL, "leaf of NULL should return NULL");
 }
 END_TEST
 

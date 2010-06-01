@@ -33,17 +33,22 @@ typedef enum {
 	TC_NOT_FOUND
 } TC_RC;
 
-int init_metadata(void);
+int metadata_init(void);
 
-tc_dir_meta_t *get_tc(const char *);
-int release_path(tc_dir_meta_t *);
-int tc_filesize(const char *);
-int tc_value(const char *, tc_filehandle_t *);
+tc_dir_meta_t *metadata_get_tc(const char *);
+int metadata_release_path(tc_dir_meta_t *);
+int metadata_get_filesize(const char *);
+int metadata_get_value(const char *, tc_filehandle_t *);
 
-void remove_unused_tc_dir(void);
+void metadata_free_unused_tc_dir(void);
 
 tc_file_meta_t *get_next_tc_file(tc_dir_meta_t *, tc_file_meta_t *);
 
+int metadata_add_to_hash(tc_dir_meta_t *);
+inline int metalock_lock(TC_LOCKTYPE);
+inline int metalock_unlock(void);
+TC_RC metadata_lookup_path(const char *, tc_dir_meta_t **, TC_LOCKTYPE);
+void free_tc_file(tc_file_meta_t *);
 
 
 #endif
