@@ -1,7 +1,6 @@
 #ifndef METADATA_H
 #define METADATA_H
 #include <tchdb.h>
-#include "uthash.h"
 #include "tc_dir.h"
 
 
