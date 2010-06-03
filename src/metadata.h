@@ -22,10 +22,13 @@ typedef struct tc_filehandle tc_filehandle_t;
 
 
 typedef enum {
+	TC_LOCK_READ		= 0,
 	TC_LOCK_WRITE  		= 1,
-	TC_LOCK_READ		= 2,
-	TC_LOCK_DONT_UNLOCK = 4
+	TC_LOCK_DONT_UNLOCK = 2, 
+	TC_LOCK_TRY 		= 4
 } TC_LOCKTYPE;
+
+#define TC_LOCK_ALL "TC_LOCK_READ TC_LOCK_WRITE TC_LOCK_DONT_UNLOCK TC_LOCK_TRY"
 
 typedef enum {
 	TC_ERROR,
@@ -45,8 +48,8 @@ void metadata_free_unused_tc_dir(void);
 tc_file_meta_t *get_next_tc_file(tc_dir_meta_t *, tc_file_meta_t *);
 
 int metadata_add_to_hash(tc_dir_meta_t *);
-inline int metalock_lock(TC_LOCKTYPE);
-inline int metalock_unlock(void);
+inline int metadata_lock(TC_LOCKTYPE);
+inline int metadata_unlock(void);
 TC_RC metadata_lookup_path(const char *, tc_dir_meta_t **, TC_LOCKTYPE);
 void free_tc_file(tc_file_meta_t *);
 

@@ -1,5 +1,6 @@
 #include <check.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include "metadata.h"
 #include "tc_dir.h"
 
@@ -74,10 +75,15 @@ START_TEST(test_metadata_add_to_hash)
 {
 	//t = tc_dir_allocate(some_key);
 	t = (tc_dir_meta_t *)malloc(sizeof(tc_dir_meta_t));
+	fail_unless(pthread_mutex_init(&t->lock, NULL) == 0, "adding mutex to t");
+	fail_unless(pthread_mutex_destroy(&t->lock) == 0, "adding mutex to t");
 
 	fail_if(t == NULL, "failed to malloc new tc_dir_meta_t needed for test");
 
 	t->path = strdup(some_key);
+	t->hdb = NULL;
+	t->initialized = 0;
+	t->refcount = 0;
 
 	//fail_unless(tc_dir_unlock(t), "failed to unlock tc_dir t needed for test");
 	
@@ -101,9 +107,14 @@ START_TEST(test_metadata_lookup_path)
 	fail_unless(metadata_lookup_path(some_key, &t_lookup, TC_LOCK_READ) == TC_NOT_FOUND, "looking up key that isn't initialized should return TC_NOT_FOUND");
 
 	t->initialized = 1;
-	t->refcount = 0;
 
-	fail_unless(metadata_lookup_path(some_key, &t_lookup, TC_LOCK_READ) == TC_EXISTS, "after initializing it, should return TC_EXISTS");
+	fail_unless(metadata_lookup_path(some_key, &t_lookup, TC_LOCK_WRITE | TC_LOCK_TRY) == TC_EXISTS, "after initializing it, should return TC_EXISTS");
+
+	fail_unless(metadata_lookup_path(some_key, &t_lookup, TC_LOCK_WRITE | TC_LOCK_TRY | TC_LOCK_DONT_UNLOCK) == TC_EXISTS, "(2) after initializing it, should return TC_EXISTS");
+	fail_if(metadata_lock(TC_LOCK_WRITE | TC_LOCK_TRY), "lookup shouldn't have released write lock");
+	fail_unless(metadata_unlock(), "should be able to unlock");
+
+	fail_unless(t->refcount == 2, "after two lookups on refcount=0 object, refcount should be 2");
 
 	fail_unless(tc_dir_lookup == tc_dir, "looking path should return correct tc_dir");
 	fail_unless(tc_dir2_lookup == tc_dir2, "looking other path should return correct tc_dir(2)");
@@ -211,23 +222,121 @@ START_TEST(test_metadata_release_path)
 }
 END_TEST
 
+
+static void *try_lock_f(void *data)
+{
+	TC_LOCKTYPE lock = (TC_LOCKTYPE)data;
+	int rc;
+
+	rc = metadata_lock(lock);
+
+	if (rc) {
+		usleep(500);
+		rc = metadata_unlock();
+	}
+
+	pthread_exit((void *)rc);
+}
+
 START_TEST(test_metadata_lock)
 {
-	fail("not tested");	
+	pthread_t try_lock;
+	pthread_attr_t attr;
+	void *rc; 
+
+	fail_unless(metadata_lock(TC_LOCK_READ), "should be able to read lock");
+	fail_unless(metadata_lock(TC_LOCK_READ), "should be able to read lock again");
+	fail_if(metadata_lock(TC_LOCK_WRITE | TC_LOCK_TRY), "shouldn't be able to write lock a read locked lock");
+	fail_unless(metadata_unlock(), "should be able to unlock");
+	fail_unless(metadata_unlock(), "should be able to unlock again");
+	fail_unless(metadata_lock(TC_LOCK_WRITE | TC_LOCK_TRY), "should be able write lock unlocked thread");
+	fail_if(metadata_lock(TC_LOCK_WRITE | TC_LOCK_TRY), "shouldn't be able write lock already locked thread");
+
+
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+
+	fail_unless(pthread_create(&try_lock, &attr, (void *)try_lock_f, (void *)(TC_LOCK_WRITE | TC_LOCK_TRY) ) == 0, "need to start another thread to check lock");
+
+
+	pthread_join(try_lock, &rc);
+
+	fail_if((int)rc, "thread shouldn't be able to gain lock");
+
+	fail_unless(metadata_unlock(), "should be able to unlock again");
+
+	fail_unless(pthread_create(&try_lock, &attr, (void *)try_lock_f, (void *)(TC_LOCK_WRITE | TC_LOCK_TRY) ) == 0, "need to start another thread to check lock");
+	
+	usleep(100);
+	fail_if(metadata_lock(TC_LOCK_WRITE | TC_LOCK_TRY), "lock should be hald by other thread");
+
+
+	pthread_join(try_lock, &rc);
+
+	fail_unless((int)rc, "thread should be able to gain lock");
+
+	fail_unless(metadata_lock(TC_LOCK_WRITE | TC_LOCK_TRY), "lock thread should have released the lock");
+
+	fail_unless(metadata_unlock(), "should be able to unlock again");
+
+
+	fail_unless(pthread_create(&try_lock, &attr, (void *)try_lock_f, (void *)(TC_LOCK_READ | TC_LOCK_TRY) ) == 0, "need to start another thread to check lock");
+	usleep(100);
+
+	fail_unless(metadata_lock(TC_LOCK_READ | TC_LOCK_TRY), "should be able to read lock");
+
+
+   	pthread_attr_destroy(&attr);
+	pthread_join(try_lock, &rc);
+
+	fail_unless((int)rc, "thread should be able to gain lock");
+
+	fail_unless(metadata_unlock(), "should be able to unlock again");
+	fail_unless(metadata_lock(TC_LOCK_WRITE | TC_LOCK_TRY), "lock thread should have released the lock");
+	fail_unless(metadata_unlock(), "should be able to unlock again");
+
+
 }
 END_TEST
-
-
-START_TEST(test_metadata_unlock)
-{
-	fail("not tested");	
-}
-END_TEST
-
 
 START_TEST(test_metadata_free_unused_tc_dir)
 {
-	fail("not tested");	
+	metadata_free_unused_tc_dir();
+	tc_dir_meta_t *tc_dir_lookup = NULL;
+	tc_dir_meta_t *t_lookup = NULL;
+	tc_filehandle_t fh;
+	int i, size;
+	char key[50];
+
+	fail_unless(metadata_lookup_path(tc_test_file, &tc_dir_lookup, TC_LOCK_READ | TC_LOCK_TRY) == TC_NOT_FOUND, "looking up object that should be freed");
+	fail_unless(metadata_lookup_path(some_key, &t_lookup, TC_LOCK_READ | TC_LOCK_TRY) == TC_EXISTS, "but objects with higher refcount should stay");
+	fail_unless(t_lookup->refcount == 3, "refcount should be 3");
+
+	t_lookup->refcount = 1;
+	metadata_free_unused_tc_dir();
+
+	fail_unless(metadata_lookup_path(some_key, &t_lookup, TC_LOCK_READ | TC_LOCK_TRY) == TC_EXISTS, "but objects with higher refcount should stay");
+	fail_unless(t_lookup->refcount == 2, "refcount should be 2");
+
+	t_lookup->refcount = 0;
+	metadata_free_unused_tc_dir();
+
+	fail_unless(metadata_lookup_path(some_key, &t_lookup, TC_LOCK_READ | TC_LOCK_TRY) == TC_NOT_FOUND, "refcount 0 object should have been freed");
+
+	for (i = 0; i < 2; i++) {
+		sprintf(key, "%s/%s", tc_test_file2, excpected_key_value2[i][0]);
+
+		fail_unless(metadata_get_value(key, &fh));
+
+		fail_unless(fh.value_len == strlen(excpected_key_value2[i][1]), 
+			"get value: wrong value_len %d (excpected: %d)", fh.value_len, excpected_key_value2[i][1]);
+
+		fail_unless(strcmp(fh.value, excpected_key_value2[i][1]) == 0, 
+			"get value: wrong value %s (excpected: %s)", fh.value, excpected_key_value2[i][1]);
+	}
+
+	fail_unless(tc_dir2->refcount == 6, "after fetching 2 values refcount should be 6 but it's %d", tc_dir2->refcount);
+
 }
 END_TEST
 
@@ -245,9 +354,8 @@ Suite *local_suite(void)
 	tcase_add_test(tc, test_metadata_get_filesize);
 	tcase_add_test(tc, test_metadata_get_value);
 	tcase_add_test(tc, test_metadata_release_path);
-//	tcase_add_test(tc, test_metadata_lock);
-//	tcase_add_test(tc, test_metadata_unlock);
-//	tcase_add_test(tc, test_metadata_free_unused_tc_dir);
+	tcase_add_test(tc, test_metadata_lock);
+	tcase_add_test(tc, test_metadata_free_unused_tc_dir);
 	suite_add_tcase(s, tc);
 
 	return s;
