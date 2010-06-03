@@ -20,7 +20,27 @@ static pthread_rwlock_t meta_lock;
 
 
 #if LOCK_DEBUG
-static const char const *str_locktype[] = { "", "write", "read", "", "", "write + dont_unlock", "read + dont_unlock" };
+
+#define ADD_LOCK(dst, i, lock) strcat(dst, #lock "|")
+#define ADD_LOCK_BITWISE(dst, i, lock) strcat(dst, (i & lock ? #lock "|" : ""))
+
+char *metadata_lock_str(TC_LOCKTYPE lock)
+{	
+	size_t max_lock_str_len = strlen(TC_LOCK_ALL) + 2; 
+	size_t lock_str_len;
+	char *lock_str = (char *)calloc(sizeof(char), max_lock_str_len);
+
+	ADD_LOCK(lock_str, lock, TC_LOCK_READ);
+	ADD_LOCK_BITWISE(lock_str, lock, TC_LOCK_WRITE);
+	ADD_LOCK_BITWISE(lock_str, lock, TC_LOCK_DONT_UNLOCK);
+	ADD_LOCK_BITWISE(lock_str, lock, TC_LOCK_TRY);
+
+	lock_str_len = strlen(lock_str);
+	lock_str[lock_str_len-1] = '\0';
+
+	return lock_str;
+}
+
 #endif
 
 
@@ -63,7 +83,7 @@ tc_dir_meta_t *metadata_get_tc(const char *path)
 	if (!metadata_add_to_hash(tc_dir))
 		goto destroy_tc_dir;
 	
-	metalock_unlock();
+	metadata_unlock();
 
 	if (tc_dir_init(tc_dir))
 		debug("returning new tc_dir %s (initial refcount %d)", path,  tc_dir->refcount);
@@ -79,7 +99,7 @@ destroy_tc_dir:
 	tc_dir = NULL;
 
 return_tc:
-	metalock_unlock();
+	metadata_unlock();
 
 	return tc_dir; 
 }
@@ -160,7 +180,7 @@ TC_RC metadata_lookup_path(const char *path, tc_dir_meta_t **tc_dir_ptr, TC_LOCK
 
 	debug("looking up %s", path);
 
-	if (!metalock_lock(lock))
+	if (!metadata_lock(lock))
 		return rc;
 
 	HASH_FIND_STR(meta, path, tc_dir);
@@ -190,7 +210,7 @@ TC_RC metadata_lookup_path(const char *path, tc_dir_meta_t **tc_dir_ptr, TC_LOCK
 error:
 
 	if (!(lock & TC_LOCK_DONT_UNLOCK))
-		metalock_unlock();
+		metadata_unlock();
 
 	return rc;
 }
@@ -297,53 +317,48 @@ int metadata_release_path(tc_dir_meta_t *tc_dir)
 		return 0;
 	}
 
-	if (!metalock_lock(TC_LOCK_READ))
+	if (!metadata_lock(TC_LOCK_READ))
 		return 0;
 
 	if (tc_dir_dec_refcount(tc_dir))
 		rc = 1;
 
-	metalock_unlock();
+	metadata_unlock();
 
 	return rc;
 }
 
 
-
-
-
-
-inline int metalock_lock(TC_LOCKTYPE locktype)
+inline int metadata_lock(TC_LOCKTYPE locktype)
 {
 #if LOCK_DEBUG
 	size_t uid = unique_id();
 	char *caller = get_caller();
+	char *lock_str = metadata_lock_str(locktype);
 #endif 
 	int rc = 0;
 	int l_rc = -1;
 	
 #if LOCK_DEBUG
-	debug("locking meta (req: %u caller: %s type: %s)", uid, caller, str_locktype[locktype]);
+	debug("locking meta (req: %u caller: %s type: %s)", uid, caller, lock_str);
 #endif
 
-	if (locktype && TC_LOCK_WRITE) 
-		l_rc = pthread_rwlock_wrlock(&meta_lock);
-	else if (locktype && TC_LOCK_READ)
-		l_rc = pthread_rwlock_rdlock(&meta_lock);
-	else {
-		debug("unknown lock type specified");
-		goto free_caller;
-	}
+	if (!(locktype & TC_LOCK_WRITE))
+		l_rc = locktype & TC_LOCK_TRY ? pthread_rwlock_tryrdlock(&meta_lock) : pthread_rwlock_rdlock(&meta_lock);
+	else
+		l_rc = locktype & TC_LOCK_TRY ? pthread_rwlock_trywrlock(&meta_lock) : pthread_rwlock_wrlock(&meta_lock);
 
 	if (l_rc == 0) {
 #if LOCK_DEBUG
-		debug("locking meta (res: %u caller: %s type: %s)", uid, caller, str_locktype[locktype]);
+		debug("locking meta (res: %u caller: %s type: %s)", uid, caller, lock_str);
 #endif
 		rc = 1;
 		goto free_caller;
 	}
 	else {
-		debug("unable to lock meta");
+#if LOCK_DEBUG
+		debug("locking meta failed (res: %u caller: %s type: %s)", uid, caller, lock_str);
+#endif
 		goto free_caller;
 	}
 
@@ -351,13 +366,16 @@ free_caller:
 #if LOCK_DEBUG
 	if (caller != NULL)
 		free(caller);
+
+	if (lock_str != NULL)
+		free(lock_str);
 #endif
 
 	return rc;
 }
 
 
-inline int metalock_unlock(void)
+inline int metadata_unlock(void)
 {
 #if LOCK_DEBUG
 	char *caller = NULL;
@@ -387,9 +405,8 @@ void metadata_free_unused_tc_dir(void)
 		// in case we free tc_dir
 		tc_dir_next = tc_dir->hh.next;
 
-		if (pthread_rwlock_trywrlock(&meta_lock) == 0) {
-			if (pthread_mutex_trylock(&tc_dir->lock) == 0) {
-
+		if (metadata_lock(TC_LOCK_WRITE | TC_LOCK_TRY)) {
+			if (tc_dir_trylock(tc_dir)) {
 				if (tc_dir->refcount ==  0) { 
 					debug("metadata_free_unused_tc_dir: refcount for %s is 0 -- freeing it", tc_dir->path);
 
@@ -405,7 +422,7 @@ void metadata_free_unused_tc_dir(void)
 					tc_dir_unlock(tc_dir);
 			}
 			
-			metalock_unlock();
+			metadata_unlock();
 		}
 
 	}

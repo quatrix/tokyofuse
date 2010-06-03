@@ -3,7 +3,7 @@
 
 AC_PREREQ([2.63])
 AC_INIT([tokyofuse], [0.1], [evil.legacy@gmail.com])
-AM_INIT_AUTOMAKE([foreign -Wall -Werror])
+AM_INIT_AUTOMAKE([color-tests foreign -Wall -Werror])
 AC_CONFIG_SRCDIR([src/metadata.c])
 PKG_CHECK_MODULES([CHECK], [check >= 0.9.4]) 
 

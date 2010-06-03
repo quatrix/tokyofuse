@@ -82,32 +82,67 @@ inline int tc_dir_dec_refcount(tc_dir_meta_t *tc_dir)
 
 inline int tc_dir_lock(tc_dir_meta_t *tc_dir)
 {
+	if (tc_dir == NULL) {
+		debug("unable to lock tc_dir - it's null");
+		return 0;
+	}
+
 #if LOCK_DEBUG
 	size_t uid = unique_id();
 	char *caller = get_caller();
 #endif
 	int rc = 0;
 
-	if (tc_dir != NULL) {
 #if LOCK_DEBUG
-		debug("locking tc_dir %s (req: %u caller: %s)", tc_dir->path, uid, caller);
+	debug("locking tc_dir %s (req: %u caller: %s)", tc_dir->path, uid, caller);
 #endif
 
-		if (pthread_mutex_lock(&tc_dir->lock) == 0) {
+	if (pthread_mutex_lock(&tc_dir->lock) == 0) {
 #if LOCK_DEBUG
-			debug("locking tc_dir %s (res: %u caller: %s)", tc_dir->path, uid, caller); 
+		debug("locking tc_dir %s (res: %u caller: %s)", tc_dir->path, uid, caller); 
 #endif
-			rc = 1;
-			goto free_caller;
-		}
-		else {
-			debug("unable to lock tc_dir");
-			goto free_caller;
-		}
+		rc = 1;
 	}
-	debug("unable to lock tc_dir - it's null");
+	else 
+		debug("unable to lock tc_dir");
 
-free_caller:
+#if LOCK_DEBUG
+	if (caller != NULL)
+		free(caller);
+#endif 
+
+	return rc;
+}
+
+inline int tc_dir_trylock(tc_dir_meta_t *tc_dir)
+{
+	if (tc_dir == NULL) {
+		debug("unable to lock tc_dir - it's null");
+		return 0;
+	}
+
+#if LOCK_DEBUG
+	size_t uid = unique_id();
+	char *caller = get_caller();
+#endif
+	int rc = 0;
+
+#if LOCK_DEBUG
+	debug("locking tc_dir %s (req: %u caller: %s)", tc_dir->path, uid, caller);
+#endif
+
+	if (pthread_mutex_trylock(&tc_dir->lock) == 0) {
+#if LOCK_DEBUG
+		debug("locking tc_dir %s (res: %u caller: %s)", tc_dir->path, uid, caller); 
+#endif
+		rc = 1;
+	}
+	else {
+#if LOCK_DEBUG
+		debug("unable to lock tc_dir %s (res: %u caller: %s)", tc_dir->path, uid, caller); 
+#endif
+	}
+
 #if LOCK_DEBUG
 	if (caller != NULL)
 		free(caller);

@@ -2,7 +2,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <sys/time.h>
 #include "tc_dir.h"
+
+#define LOCK_SLEEP 500
+#define GRACE_SLEEP 100
 
 static const char *tc_test_file = "tc_backend_test";
 static const char *tc_test_file_tc = "tc_backend_test.tc";
@@ -10,6 +14,8 @@ static const char *fake_tc_file = "fake_tc_file";
 static tc_dir_meta_t *tc_dir = NULL;
 static tc_dir_meta_t *tc_dir_broken = NULL;
 
+
+static int tc_dir_refcount = 0; 
 
 int tc_open(const char *path)
 {
@@ -58,7 +64,10 @@ START_TEST(test_tc_dir_init)
 {
 	fail_unless(tc_dir_init(tc_dir) == tc_dir, "should be able to init this tc_dir");
 	fail_unless(tc_dir->initialized, "should be initialized");
-	fail_unless(tc_dir->refcount == 1, "refcount should be 1");
+	
+	tc_dir_refcount++;
+
+	fail_unless(tc_dir->refcount == tc_dir_refcount,  "tc_dir->refcount (%d) should be %d", tc_dir->refcount, tc_dir_refcount);
 	fail_unless(tc_dir_unlock(tc_dir), "tc_dir unlocking should work");
 	fail_unless(pthread_mutex_trylock(&tc_dir->lock) == 0, "should be able to lock an unlocked dir");
 	fail_unless(tc_dir_unlock(tc_dir), "tc_dir unlocking should work");
@@ -78,32 +87,83 @@ END_TEST
 
 START_TEST(test_tc_dir_dec_refcount)
 {
-	fail("not tested");
+	fail_if(tc_dir_dec_refcount(NULL), "can't dec refcount on null tc_dir");
+	fail_unless(tc_dir_dec_refcount(tc_dir), "should be able to dec refcount on valid tc_dir");
+	tc_dir_refcount--;
+	fail_unless(tc_dir->refcount == tc_dir_refcount,  "tc_dir->refcount (%d) should be %d", tc_dir->refcount, tc_dir_refcount);
 }
 END_TEST
 
+static void *try_lock_f(void *data)
+{
+	tc_dir_meta_t *tc_dir = (tc_dir_meta_t *)data;
+	int rc;
 
+	rc = tc_dir_trylock(tc_dir);
+
+	if (rc) {
+		usleep(LOCK_SLEEP);
+		rc = tc_dir_unlock(tc_dir);
+	}
+
+	pthread_exit((void *)rc);
+}
+
+static double time_hires_diff(struct timeval *td, struct timeval *t0)
+{
+	double start, end;
+
+	start = t0->tv_sec + (double)t0->tv_usec / 1000000;
+	end = td->tv_sec + (double)td->tv_usec / 1000000;
+
+	return (end - start) * 1000000;
+}
 START_TEST(test_tc_dir_lock)
 {
-	fail("not tested");
+	pthread_t try_lock;
+	pthread_attr_t attr;
+	struct timeval t0, td;
+	int elapsed;
+	void *rc;
+
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+	
+	fail_unless(tc_dir_lock(tc_dir), "should be able to lock unlocked tc_dir");
+	fail_if(tc_dir_trylock(tc_dir), "shouldn't be able to lock locked tc_dir");
+
+	fail_unless(pthread_create(&try_lock, &attr, (void *)try_lock_f, (void *)tc_dir ) == 0, "need to start another thread to check lock");
+	
+	pthread_join(try_lock, &rc);
+
+	fail_if((int)rc, "thread shouldn't be able to gain lock");
+
+	fail_unless(tc_dir_unlock(tc_dir), "should be able to unlock tc_dir");
+
+	fail_unless(pthread_create(&try_lock, &attr, (void *)try_lock_f, (void *)tc_dir ) == 0, "need to start another thread to check lock");
+
+
+	usleep(GRACE_SLEEP);
+
+	gettimeofday(&t0, NULL);
+
+	fail_unless(tc_dir_lock(tc_dir), "should wait until lock released and get lock");
+
+	gettimeofday(&td, NULL);
+	
+	elapsed = time_hires_diff(&td, &t0);
+
+	pthread_join(try_lock, &rc);
+
+	fail_unless((int)rc, "thread should be able to gain lock");
+
+	fail_if(elapsed > (LOCK_SLEEP * 2), "lock was heled for (%d) too long (expected not longer than %d)", elapsed, (LOCK_SLEEP * 2));
+	fail_if(elapsed < (LOCK_SLEEP / 2), "lock was heled for (%d) too little (expected shorter than %d)", elapsed, (LOCK_SLEEP / 2));
+
+	fail_unless(tc_dir_unlock(tc_dir), "should be able to unlock tc_dir");
 
 }
 END_TEST
-
-
-START_TEST(test_tc_dir_unlock)
-{
-	fail("not tested");
-}
-END_TEST
-
-
-START_TEST(test_tc_dir_free)
-{
-	fail("not tested");
-}
-END_TEST
-
 
 
 Suite *local_suite(void)
@@ -113,10 +173,8 @@ Suite *local_suite(void)
 	TCase *tc = tcase_create("tc_dir");
 	tcase_add_test(tc, test_tc_dir_allocate);
 	tcase_add_test(tc, test_tc_dir_init);
-	//tcase_add_test(tc, test_tc_dir_dec_refcount);
-	//tcase_add_test(tc, test_tc_dir_lock);
-	//tcase_add_test(tc, test_tc_dir_unlock);
-	//tcase_add_test(tc, test_tc_dir_free);
+	tcase_add_test(tc, test_tc_dir_dec_refcount);
+	tcase_add_test(tc, test_tc_dir_lock);
 	suite_add_tcase(s, tc);
 
 	return s;
