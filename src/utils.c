@@ -147,7 +147,7 @@ size_t unique_id(void)
 	return uid++;
 }
 
-#define DEBUG 1
+#define DEBUG 0
 
 #if DEBUG
 void debug(const char *format, ...) 
