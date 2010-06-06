@@ -401,7 +401,6 @@ START_TEST(test_metadata_free_unused_tc_dir)
 END_TEST
 
 
-
 START_TEST(test_wake_up_counter)
 {
 	fail_unless(wake_up_counter == 0, "tc_gc_wake_up shouldn't have been called");
