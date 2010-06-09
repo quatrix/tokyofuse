@@ -1,91 +1,58 @@
+import unittest
 from pathobject import RunOnRange, PathObject
-import random
-import os, errno
-import tc
+from pathmodules import CreateDirectory, CreateTc,  CreateRandomFile, Diff, DiffError
+import os
+
+RANGE_START    = 99999999
+RANGE_STOP     = RANGE_START + 8096
+FILE_PREFIX    = '/tmp/tctest/files'
+DIFF_FORKS     = 10
+MAX_FILESIZE   = 1024 * 5
+TC_PREFIX      = '/tmp/tctest/tc'
+TC_FUSE_MOUNT  = '/tmp/tcfuse'
+TC_FUSE_BINARY = '../../src/tokyofuse'
+TC_CREATED     = '/tmp/tc.created'
 
 
-class CreateDirectory:
-	def run(self, path):
+class TokyoFuseTest(unittest.TestCase):
+	range = RunOnRange( RANGE_START, RANGE_STOP )
+	diff = Diff(FILE_PREFIX, TC_FUSE_MOUNT)
+
+	def setup_workdirs(self):
+		if os.path.exists(TC_CREATED):
+			return
+
+		self.range.run(CreateDirectory(FILE_PREFIX))
+		self.range.run(CreateRandomFile(FILE_PREFIX, MAX_FILESIZE))
+
+		tc_creator = CreateTc(FILE_PREFIX, TC_PREFIX)
+		self.range.run(tc_creator)
+
+		tc_creator.close()
+
+		f = open(TC_CREATED, "w")
+		f.close()
+
+	def setUp(self):
+		self.setup_workdirs()
+
+		os.system("fusermount -u %s &>/dev/null" % TC_FUSE_MOUNT)
+		self.assertFalse(os.system("mkdir -p %s" % TC_FUSE_MOUNT))
+		self.assertFalse(os.system("%s -o modules=subdir,subdir=%s %s" % (TC_FUSE_BINARY, TC_PREFIX, TC_FUSE_MOUNT)))
+
+	def tearDown(self):
+		self.assertFalse(os.system("fusermount -u %s" % TC_FUSE_MOUNT))
+
+
+	def test_diff(self):
 		try:
-			os.makedirs(path.fulldir)
+			print "running seq diff test"
+			self.range.run(self.diff)
 
-		except OSError as exc:
-			if exc.errno == errno.EEXIST:
-				pass
-			else:
-				raise
-		
-
-class RandomFile:
-	def __init__(self, max_size ):
-		self.max_size = max_size
-
-	def __random_char(self):
-		return chr(random.randrange(255))
-
-	def __random_content(self):
-		r = ''
-
-		for i in range(random.randrange(self.max_size-1)):
-			r += self.__random_char()
-
-		return r
-
-	def __create_random_file(self, filename):
-		with open(filename, 'wb') as f:
-			f.write(self.__random_content())
-	
-	def run(self, path):
-			self.__create_random_file(path.fullpath)
-
-
-class CreateTc:
-	def __init__(self, prefix):
-		self.prefix = prefix
-		self.tc_files = {}
-
-	def run(self, path):
-		tc_file = self.prefix + '/' + path.directory + '.tc'
-		tc_dir  = self.prefix + '/' + path.parentdir
-		tc_key  = path.filename
-
-		try:
-			hdb = self.tc_files[tc_file]
-		except KeyError:
-			hdb = tc.HDB()
-
-			try:
-				os.makedirs(tc_dir)
-			except OSError as exc:
-				if exc.errno == errno.EEXIST:
-					pass
-				else:
-					raise
-			try:
-				hdb.open(tc_file, tc.HDBOWRITER | tc.HDBOCREAT)
-			except tc.Error, e:
-				 sys.stderr.write("open error: %s\n" % (e.args[1]))	
-				 raise
-
-			self.tc_files[tc_file] = hdb
-
-
-		try:
-			with open(path.fullpath, 'rb') as f:
-				hdb.put(tc_key, f.read())
-
-		except tc.Error, e:
-			sys.stderr.write("put error: %s\n" % (e.args[1]))
-			raise
-
-	def close(self):
-		for hdb in self.tc_files.itervalues():
-			hdb.close()
-				
-
-
-x = RunOnRange( "/baba", 99999999, 99999999+8096)
-
-x.run(CreateDirectory())
-x.run(RandomFile(max_size = 1024))
-x.run(CreateTc('/pita'))
+			print "running forked diff test"
+			self.diff.dir_diff(DIFF_FORKS) 
+		except DiffError, e:
+			self.fail(e)
+			
+if __name__ == '__main__':
+	unittest.main()
