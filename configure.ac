@@ -1,11 +1,24 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ([2.63])
+AC_PREREQ([2.59])
 AC_INIT([tokyofuse], [0.1], [evil.legacy@gmail.com])
-AM_INIT_AUTOMAKE([color-tests foreign -Wall -Werror])
+AM_INIT_AUTOMAKE([foreign -Wall -Werror])
 AC_CONFIG_SRCDIR([src/metadata.c])
-PKG_CHECK_MODULES([CHECK], [check >= 0.9.4]) 
+PKG_CHECK_MODULES([FUSE], [fuse >= 2.7.4]) 
+
+AC_ARG_WITH(python, [  --with-python=PATH	  Path to specific Python binary],[ PYTHON="$withval" ])
+
+AC_ARG_ENABLE(tests,[  --enable-tests     build tests],[ 
+	PKG_CHECK_MODULES([CHECK], [check >= 0.9.4]) 
+	AM_PATH_PYTHON([2.6])
+	AC_DEFINE_UNQUOTED([PYTHON_BIN], "${PYTHON}", [python binary defined to $PYTHON])
+	build_tests=true
+]
+)
+
+AM_CONDITIONAL([BUILD_TESTS], [test x$build_tests = xtrue ])
+
 
 # Checks for programs.
 AC_PROG_CC
@@ -22,15 +35,13 @@ AC_TYPE_MODE_T
 AC_TYPE_OFF_T
 AC_TYPE_SIZE_T
 AC_HEADER_STDBOOL
-AC_TYPE_UINT16_T
-AC_TYPE_UINT32_T
-AC_TYPE_UINT8_T
 AC_CHECK_TYPES([ptrdiff_t])
 
 # Checks for library functions.
 AC_FUNC_LSTAT_FOLLOWS_SLASHED_SYMLINK
 AC_FUNC_MALLOC
-AC_CHECK_LIB(tokyocabinet, tchdbnew)
+AC_CHECK_LIB([tokyocabinet], [tchdbnew],[], AC_MSG_ERROR([*** tokyocabinet libraries required]))
+
 AC_CHECK_FUNCS([gettimeofday lchown memset mkdir mkfifo rmdir strchr strdup strndup strrchr])
 AC_CONFIG_FILES([Makefile src/Makefile tests/Makefile])
 AC_CONFIG_HEADERS([config.h])

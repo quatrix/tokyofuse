@@ -5,13 +5,13 @@
 #include <sys/time.h>
 #include "tc_dir.h"
 
-#define LOCK_SLEEP 500
-#define GRACE_SLEEP 100
+#define LOCK_SLEEP 5000
+#define GRACE_SLEEP 1000
 
-static const char *tc_test_file = "tc_backend_test";
-static const char *tc_test_file_tc = "tc_backend_test.tc";
-static const char *fake_tc_file = "fake_tc_file";
-static tc_dir_meta_t *tc_dir = NULL;
+static const char *tc_test_file     = "tc_backend_test";
+static const char *tc_test_file_tc  = "tc_backend_test.tc";
+static const char *fake_tc_file     = "fake_tc_file";
+static tc_dir_meta_t *tc_dir        = NULL;
 static tc_dir_meta_t *tc_dir_broken = NULL;
 
 
@@ -142,23 +142,22 @@ START_TEST(test_tc_dir_lock)
 
 	fail_unless(pthread_create(&try_lock, &attr, (void *)try_lock_f, (void *)tc_dir ) == 0, "need to start another thread to check lock");
 
+	gettimeofday(&t0, NULL);
 
 	usleep(GRACE_SLEEP);
 
-	gettimeofday(&t0, NULL);
-
 	fail_unless(tc_dir_lock(tc_dir), "should wait until lock released and get lock");
+
+	pthread_join(try_lock, &rc);
 
 	gettimeofday(&td, NULL);
 	
 	elapsed = time_hires_diff(&td, &t0);
 
-	pthread_join(try_lock, &rc);
-
 	fail_unless((int)rc, "thread should be able to gain lock");
 
-	fail_if(elapsed > (LOCK_SLEEP * 2), "lock was heled for (%d) too long (expected not longer than %d)", elapsed, (LOCK_SLEEP * 2));
-	fail_if(elapsed < (LOCK_SLEEP / 2), "lock was heled for (%d) too little (expected shorter than %d)", elapsed, (LOCK_SLEEP / 2));
+	fail_if(elapsed > (LOCK_SLEEP * 2), "lock was held for (%d) too long (expected not longer than %d)", elapsed, (LOCK_SLEEP * 2));
+	fail_if(elapsed < (LOCK_SLEEP / 2), "lock was held for (%d) too little (expected shorter than %d)", elapsed, (LOCK_SLEEP / 2));
 
 	fail_unless(tc_dir_unlock(tc_dir), "should be able to unlock tc_dir");
 

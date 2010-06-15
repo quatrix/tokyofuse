@@ -1,5 +1,5 @@
-TESTS = check_utils check_tc check_tc_backend check_tc_gc check_tc_dir check_metadata
-check_PROGRAMS = check_utils check_tc check_tc_backend check_tc_gc check_tc_dir check_metadata
+TESTS = check_utils check_tc check_tc_backend check_tc_gc check_tc_dir check_metadata check_external
+check_PROGRAMS = check_utils check_tc check_tc_backend check_tc_gc check_tc_dir check_metadata check_external
 
 AM_CFLAGS = -I../src
 src_dir = $(top_builddir)/src
@@ -27,3 +27,7 @@ check_tc_dir_LDADD =  @CHECK_LIBS@
 check_metadata_SOURCES = check_metadata.c $(src_dir)/utils.h $(src_dir)/utils.c $(src_dir)/tc_backend.c $(src_dir)/tc_backend.h $(src_dir)/metdata.h $(src_dir)/tc.c $(src_dir)/tc.h $(src_dir)/metadata.c $(src_dir)/metadata.h $(src_dir)/tc_dir.c $(src_dir)/tc_dir.h
 check_metadata_CFLAGS = @CHECK_CFLAGS@ $(AM_CFLAGS)
 check_metadata_LDADD =  @CHECK_LIBS@ -ltokyocabinet
+
+check_external_SOURCES = check_external.c 
+check_external_CFLAGS = @CHECK_CFLAGS@ 
+check_external_LDADD =  @CHECK_LIBS@

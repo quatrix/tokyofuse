@@ -1,17 +1,8 @@
-import unittest
-from pathobject import RunOnRange, PathObject
+from pathobject  import RunOnRange, PathObject
 from pathmodules import CreateDirectory, CreateTc,  CreateRandomFile, Diff, DiffError
-import os
+from optparse    import OptionParser
+import os, sys,  unittest
 
-RANGE_START    = 99999999
-RANGE_STOP     = RANGE_START + 8096
-FILE_PREFIX    = '/tmp/tctest/files'
-DIFF_FORKS     = 10
-MAX_FILESIZE   = 1024 * 5
-TC_PREFIX      = '/tmp/tctest/tc'
-TC_FUSE_MOUNT  = '/tmp/tcfuse'
-TC_FUSE_BINARY = '../../src/tokyofuse'
-TC_CREATED     = '/tmp/tc.created'
 
 
 class TokyoFuseTest(unittest.TestCase):
@@ -55,4 +46,23 @@ class TokyoFuseTest(unittest.TestCase):
 			self.fail(e)
 			
 if __name__ == '__main__':
-	unittest.main()
+	RANGE_START    = 99999999
+	RANGE_STOP     = RANGE_START + 8096
+	FILE_PREFIX    = '/tmp/tctest/files'
+	DIFF_FORKS     = 10
+	MAX_FILESIZE   = 1024 * 5
+	TC_PREFIX      = '/tmp/tctest/tc'
+	TC_FUSE_MOUNT  = '/tmp/tcfuse'
+	TC_FUSE_BINARY = '../../src/tokyofuse'
+	TC_CREATED     = '/tmp/tc.created'
+
+
+	opts = OptionParser()
+
+	opts.add_option("-tcb", "--tc_binary", action="store", type="string", dest="tc_fuse_binary")
+	
+	(options, args) = opts.parse_args(args)
+
+	#suite = unittest.TestLoader().loadTestsFromTestCase(TokyoFuseTest)
+	#unittest.TextTestRunner(verbosity=2).run(suite)
+

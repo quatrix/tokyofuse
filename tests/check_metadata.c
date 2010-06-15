@@ -5,31 +5,36 @@
 #include "metadata.h"
 #include "tc_dir.h"
 
-#define LOCK_SLEEP 500
-#define GRACE_SLEEP 100
+#define LOCK_SLEEP 5000
+#define GRACE_SLEEP 1000
 
 static int wake_up_counter = 0;
 
-static const char const *tc_test_file = "tc_backend_test";
+static const char const *tc_test_file  = "tc_backend_test";
 static const char const *tc_test_file2 = "tc_backend_test2";
-static const char const *some_key = "some_key";
+static const char const *some_key      = "some_key";
 
 static const char const *fake_tc_file = "some_fake_tc_file";
 
-static const char *excpected_key_value[4][2] = { { "liron", "makaron" },
-											 { "vova" , "vasya"   },
-											 { "pita" , "good"    },
-											 { "foo"  , "bar"     }};  
+static const char *excpected_key_value[4][2] = 	{ 
+												{ "liron", "makaron" },
+												{ "vova" , "vasya"   },
+											 	{ "pita" , "good"    },
+											 	{ "foo"  , "bar"     }
+												};  
 					
-static const char *excpected_key_value2[2][2] = { { "hey", "ho" }, { "lets"  , "go" }};  
+static const char *excpected_key_value2[2][2] = { 
+												{ "hey", "ho" }, 
+												{ "lets"  , "go" }
+												};  
 
-static tc_dir_meta_t *tc_dir = NULL;
+static tc_dir_meta_t *tc_dir  = NULL;
 static tc_dir_meta_t *tc_dir2 = NULL;
-static tc_dir_meta_t *t = NULL;
+static tc_dir_meta_t *t       = NULL;
 
-static int tc_dir_refcount = 0;
+static int tc_dir_refcount  = 0;
 static int tc_dir2_refcount = 0;
-static int t_refcount = 0;
+static int t_refcount       = 0;
 
 // mocked 
 int tc_gc_wake_up(void)
@@ -306,10 +311,10 @@ START_TEST(test_metadata_lock)
 	fail_unless(metadata_unlock(), "should be able to unlock again");
 
 	fail_unless(pthread_create(&try_lock, &attr, (void *)try_lock_f, (void *)(TC_LOCK_WRITE | TC_LOCK_TRY) ) == 0, "need to start another thread to check lock");
+
+	gettimeofday(&t0, NULL);
 	
 	usleep(GRACE_SLEEP);
-	
-	gettimeofday(&t0, NULL);
 
 	fail_unless(metadata_lock(TC_LOCK_WRITE), "should wait until lock released and get lock");
 
@@ -319,8 +324,8 @@ START_TEST(test_metadata_lock)
 
 	pthread_join(try_lock, &rc);
 
-	fail_if(elapsed > (LOCK_SLEEP * 2), "lock was heled for (%d) too long (expected not longer than %d)", elapsed, (LOCK_SLEEP * 2));
-	fail_if(elapsed < (LOCK_SLEEP / 2), "lock was heled for (%d) too little (expected shorter than %d)", elapsed, (LOCK_SLEEP / 2));
+	fail_if(elapsed > (LOCK_SLEEP * 2), "lock was held for (%d) too long (expected not longer than %d)", elapsed, (LOCK_SLEEP * 2));
+	fail_if(elapsed < (LOCK_SLEEP / 2), "lock was held for (%d) too little (expected shorter than %d)", elapsed, (LOCK_SLEEP / 2));
 
 	fail_unless((int)rc, "thread should be able to gain lock");
 

@@ -1,6 +1,6 @@
 from multiprocessing import Process, Pipe
 import random
-import os, errno
+import sys, os, errno
 import tc
 import filecmp
 
@@ -65,14 +65,20 @@ class CreateTc:
 					pass
 				else:
 					raise
-			try:
-				hdb.open(tc_file, tc.HDBOWRITER | tc.HDBOCREAT)
-			except tc.Error, e:
-				 sys.stderr.write("open error: %s\n" % (e.args[1]))	
-				 raise
+
+			for retry in range(10):
+				try:
+					hdb.open(tc_file, tc.HDBOWRITER | tc.HDBOCREAT)
+					break;
+				except tc.Error, e:
+					if e[0] == 15:
+						# on mmap failure, close all active cabinets
+						self.close()
+					else:
+						sys.stderr.write("open error: %s\n" % (e.args[1]))	
+						raise
 
 			self.tc_files[tc_file] = hdb
-
 
 		try:
 			with open(self.file_prefix + path.fullpath, 'rb') as f:
@@ -85,6 +91,9 @@ class CreateTc:
 	def close(self):
 		for hdb in self.tc_files.itervalues():
 			hdb.close()
+
+		self.tc_files.clear()
+
 
 
 class DiffError(Exception):
@@ -105,8 +114,8 @@ class Diff:
 		tc_file = self.tc_prefix + path.fullpath
 		or_file = self.file_prefix + path.fullpath
 
-		if filecmp.cmp(tc_file, or_file) == False:
-			raise DiffError("%s != %s" % (tc_file, or_file))
+		#if filecmp.cmp(tc_file, or_file) == False:
+		#	raise DiffError("%s != %s" % (tc_file, or_file))
 
 		self.directories[path.parent] = 1
 	
