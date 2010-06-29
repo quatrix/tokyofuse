@@ -3,6 +3,7 @@ import random
 import sys, os, errno
 import tc
 import filecmp
+import time
 
 class CreateDirectory:
 	def __init__(self, prefix):
@@ -114,27 +115,70 @@ class Diff:
 		tc_file = self.tc_prefix + path.fullpath
 		or_file = self.file_prefix + path.fullpath
 
-		#if filecmp.cmp(tc_file, or_file) == False:
+
+		#if filecmp.cmp(tc_file, or_file, shallow = False) == False:
 		#	raise DiffError("%s != %s" % (tc_file, or_file))
 
-		self.directories[path.parent] = 1
+		try:
+			self.directories[path.parent].append(path.filename)
+		except KeyError:
+			self.directories[path.parent] = [path.filename]
+
 	
 
 	def dir_diff(self, forks):
 		workers = []
 		results = []
 
-		def __dir_diff(conn, dir_a, dir_b):
-			conn.send(filecmp.dircmp(dir_a, dir_b).diff_files)
+		def __dir_diff(conn, dir_a, dir_b, files):
+			print "starting dir diff between %s and %s" % (dir_a, dir_b)
+
+			diff = []
+
+			for file in files:
+				file_a = dir_a + '/' + file
+				file_b = dir_b + '/' + file
+				#t0 = time.time()
+				if filecmp.cmp(file_a, file_b, shallow = False) == False:
+					diff.append(file)
+				#td = (time.time() - t0) * 1000.0
+
+				"""
+				if td > 300:	
+					print "%10d |" % td
+				else:
+					print "%10s | %d" % ('', td)
+				"""
+
+
+
+
+			#d = filecmp.cmpfiles(dir_a, dir_b, files, shallow=False)
+
+			#diff = d[1]
+			#diff.extend(d[2])
+
+
+
+			conn.send(diff)
+
+			#d = filecmp.dircmp(dir_a, dir_b)
+
+			#diff = []
+			#diff.extend(d.left_only)
+			#diff.extend(d.right_only)
+			#diff.extend(d.diff_files)
+
+			#conn.send(diff)
 			conn.close()
 
-		for i in range(forks):
-			for direcory in self.directories:
-				tc_dir   = self.tc_prefix + direcory
-				file_dir = self.file_prefix + direcory
+		for directory, files in self.directories.items():
+			tc_dir   = self.tc_prefix + directory
+			file_dir = self.file_prefix + directory
 
+			for i in range(forks):
 				parent_conn, child_conn = Pipe()
-				p = Process(target=__dir_diff, args=(child_conn, tc_dir, file_dir, ))
+				p = Process(target=__dir_diff, args=(child_conn, file_dir, tc_dir, files ))
 				p.start()
 
 				workers.append((p, parent_conn))

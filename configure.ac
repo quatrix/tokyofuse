@@ -5,7 +5,7 @@ AC_PREREQ([2.59])
 AC_INIT([tokyofuse], [0.1], [evil.legacy@gmail.com])
 AM_INIT_AUTOMAKE([foreign -Wall -Werror])
 AC_CONFIG_SRCDIR([src/metadata.c])
-PKG_CHECK_MODULES([FUSE], [fuse >= 2.7.4]) 
+PKG_CHECK_MODULES([FUSE], [fuse >= 2.8.4]) 
 
 AC_ARG_WITH(python, [  --with-python=PATH	  Path to specific Python binary],[ PYTHON="$withval" ])
 
@@ -16,6 +16,7 @@ AC_ARG_ENABLE(tests,[  --enable-tests     build tests],[
 	build_tests=true
 ]
 )
+
 
 AM_CONDITIONAL([BUILD_TESTS], [test x$build_tests = xtrue ])
 

@@ -51,13 +51,13 @@ int tc_gc_destroy(void)
 	debug("tc_gc_destroy: killing gc");
 
 	if (pthread_cancel(gc_thread) != 0) {
-		debug("tc_gc_destroy: failed to cancel gc_thread");
+		error("tc_gc_destroy: failed to cancel gc_thread");
 		return 0;
 	}
 
 	debug("tc_gc_destroy: joining gc thread");
 	if (pthread_join(gc_thread, NULL) != 0) {
-		debug("tc_gc_destroy: failed to join gc thread");
+		error("tc_gc_destroy: failed to join gc thread");
 		return 0;
 	}
 	else
