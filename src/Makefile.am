@@ -1,4 +1,4 @@
-FLAGS=-O3 -Wall -Werror -g
+FLAGS=-O3 -Wall -Werror -g 
 AM_LDFLAGS = `pkg-config --cflags --libs fuse` $(FLAGS) 
 AM_CFLAGS = `pkg-config --cflags fuse`$(FLAGS)
 

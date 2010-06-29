@@ -12,8 +12,8 @@
 #include "tc_dir.h"
 #include "tc.h"
 
-#define LOCK_DEBUG 1
-#define DEBUG 1
+#define LOCK_DEBUG 0
+#define BLOCK_CLEANUP 0
 
 static tc_dir_meta_t *meta = NULL;
 static pthread_rwlock_t meta_lock;
@@ -23,6 +23,7 @@ static pthread_rwlock_t meta_lock;
 
 #define ADD_LOCK(dst, i, lock) strcat(dst, #lock "|")
 #define ADD_LOCK_BITWISE(dst, i, lock) strcat(dst, (i & lock ? #lock "|" : ""))
+
 
 char *metadata_lock_str(TC_LOCKTYPE lock)
 {	
@@ -48,7 +49,7 @@ char *metadata_lock_str(TC_LOCKTYPE lock)
 int metadata_init(void)
 {
 	if (pthread_rwlock_init(&meta_lock, NULL) != 0) {
-		debug("can't init rwlock meta_lock");
+		error("can't init rwlock meta_lock");
 		return 0;
 	}
 
@@ -88,7 +89,7 @@ tc_dir_meta_t *metadata_get_tc(const char *path)
 	if (tc_dir_init(tc_dir))
 		debug("returning new tc_dir %s (initial refcount %d)", path,  tc_dir->refcount);
 	else
-		debug("failed to initialize tc_dir %s", path);
+		error("failed to initialize tc_dir %s", path);
 
 	tc_dir_unlock(tc_dir);
 
@@ -121,7 +122,7 @@ int metadata_add_to_hash(tc_dir_meta_t *tc_dir)
 	if (tc_dir == __tc_dir)
 		return 1;
 
-	debug("failed to insert tc_dir %s to meta hash", tc_dir->path);
+	error("failed to insert tc_dir %s to meta hash", tc_dir->path);
 
 	return 0;
 }
@@ -148,7 +149,7 @@ tc_file_meta_t *get_next_tc_file(tc_dir_meta_t *tc_dir, tc_file_meta_t *last_tc_
 		tc_file = (tc_file_meta_t *) malloc(sizeof(tc_file_meta_t));
 
 		if (tc_file == NULL) {
-			debug("can't allocate memory for new tc_file");
+			error("can't allocate memory for new tc_file");
 			return NULL;
 		}
 
@@ -224,17 +225,17 @@ int metadata_get_filesize(const char *path)
 	tc_dir_meta_t *tc_dir;
 
 	if (path == NULL) {
-		debug("metadata_get_filesize: null path");
+		error("metadata_get_filesize: null path");
 		return -1;
 	}
 	
 	if ((parent = parent_path(path)) == NULL) {
-		debug("metadata_get_filesize: null parent");
+		error("metadata_get_filesize: null parent");
 		return -1;
 	}
 
 	if ((leaf = leaf_file(path)) == NULL) {
-		debug("metadata_get_filesize: null leaf");
+		error("metadata_get_filesize: null leaf");
 		return -1;
 	}
 
@@ -266,22 +267,22 @@ int metadata_get_value(const char *path, tc_filehandle_t *fh)
 	int value_len = 0;
 
 	if (path == NULL) {
-		debug("metadata_get_value: null path");
+		error("metadata_get_value: null path");
 		return 0;
 	}
 
 	if (fh == NULL) {
-		debug("metadata_get_value: null fh");
+		error("metadata_get_value: null fh");
 		return 0;
 	}
 	
 	if ((parent = parent_path(path)) == NULL) {
-		debug("metadata_get_value: null parent");
+		error("metadata_get_value: null parent");
 		return 0;
 	}
 
 	if ((leaf = leaf_file(path)) == NULL) {
-		debug("metadata_get_value: null leaf");
+		error("metadata_get_value: null leaf");
 		return 0;
 	}
 
@@ -313,7 +314,7 @@ int metadata_release_path(tc_dir_meta_t *tc_dir)
 	int rc = 0;
 
 	if (tc_dir == NULL) {
-		debug("tried to release path on NULL tc_dir");
+		error("tried to release path on NULL tc_dir");
 		return 0;
 	}
 
@@ -386,7 +387,7 @@ inline int metadata_unlock(void)
 #endif
 
 	if (pthread_rwlock_unlock(&meta_lock) != 0) {
-		debug("can't unlock metalock");
+		error("can't unlock metalock");
 		return 0;
 			
 	}
@@ -404,9 +405,14 @@ void metadata_free_unused_tc_dir(void)
 	for (tc_dir = meta; tc_dir != NULL; tc_dir = tc_dir_next) {
 		// in case we free tc_dir
 		tc_dir_next = tc_dir->hh.next;
-
+		
+		#if BLOCK_CLEANUP
+		if (metadata_lock(TC_LOCK_WRITE)) {
+			if (tc_dir_lock(tc_dir)) {
+		#else
 		if (metadata_lock(TC_LOCK_WRITE | TC_LOCK_TRY)) {
 			if (tc_dir_trylock(tc_dir)) {
+		#endif
 				if (tc_dir->refcount ==  0) { 
 					debug("metadata_free_unused_tc_dir: refcount for %s is 0 -- freeing it", tc_dir->path);
 

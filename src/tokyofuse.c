@@ -38,8 +38,8 @@
 #include "metadata.h"
 
 
-
 #define TC_GC_SLEEP 5 // 5 seconds between every gc run
+#define CACHEGRIND 99999
 
 
 static inline tc_dir_meta_t *tokyofuse_get_tc_dir(struct fuse_file_info *fi)
@@ -57,14 +57,14 @@ static int xmp_getattr(const char *path, struct stat *stbuf)
 #ifdef CACHEGRIND
 	static int i = 0;
 
-	if (++i == 9999)
+	if (++i == CACHEGRIND)
 		exit(0);
 #endif
 
 	if (is_tc(path))
 		tc_dir_stat(stbuf);
 	else if (is_parent_tc(path)) {
-		fprintf(stderr, "%s has tc parent\n", path);
+		debug("%s has tc parent", path);
 		tc_file_stat(stbuf, metadata_get_filesize(path));
 	}
 	else if (has_suffix(path, ".tc"))
@@ -78,10 +78,10 @@ static int xmp_getattr(const char *path, struct stat *stbuf)
 
 static int xmp_access(const char *path, int mask)
 {
-	fprintf(stderr, "access called on %s\n", path);
+	debug("access called on %s", path);
 
 	if (is_tc(path))
-		fprintf(stderr, "access %s has a tc parent\n", path);
+		debug("access %s has a tc parent", path);
 	else if (access(path, mask) == -1)
 		return -errno;
 
@@ -106,12 +106,12 @@ static int xmp_opendir(const char *path, struct fuse_file_info *fi)
 	if (is_tc(path)) {
 		tc_dir_meta_t *tc_dir = NULL;
 
-		fprintf(stderr, "'%s' is tc\n", path); 
+		debug("'%s' is tc", path); 
 		
 		tc_dir = metadata_get_tc(path);
 
 		if (tc_dir == NULL) {
-			fprintf(stderr, "failed to open tc metadata for %s\n", path);
+			debug("failed to open tc metadata for %s", path);
 			return -errno;
 		}
 
@@ -178,7 +178,7 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 			if (has_suffix(de->d_name, ".tc")) {
 				remove_suffix(de->d_name, ".tc");
 
-				fprintf(stderr,"readdir file is tc: %s\n",de->d_name);
+				debug("readdir file is tc: %s",de->d_name);
 				tc_dir_stat(&st);
 			}
 			else {
@@ -336,21 +336,21 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 {
 	int res;
 
-	fprintf(stderr, "wants to open %s\n", path);
+	debug("wants to open %s", path);
 
 	if (is_parent_tc(path)) { 
-		fprintf(stderr, "%s has a tc parent\n", path);
+		debug("%s has a tc parent", path);
 
 		tc_filehandle_t *fh	= (tc_filehandle_t *)malloc(sizeof(tc_filehandle_t));
 
 		if (fh == NULL) {
-			fprintf(stderr, "can't allocate memory for tc_filehandle\n");
+			debug("can't allocate memory for tc_filehandle");
 			return -errno;
 		}
 
 		//fh->value = metadata_get_value(path, &fh->value_len);
 		if (!metadata_get_value(path, fh)) {
-			fprintf(stderr, "metadata_get_value failed\n");
+			debug("metadata_get_value failed");
 			free(fh);
 			return -errno;
 		}
@@ -376,8 +376,8 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 	size_t value_len;
 	tc_filehandle_t *fh;	
 
-	fprintf(stderr, "wants to read %d bytes from %s\n", size, path);
-	//fprintf(stderr, "wants to read %d from %s (offset: %d)\n", size, path, offset);
+	debug("wants to read %d bytes from %s", size, path);
+	//debug("wants to read %d from %s (offset: %d)", size, path, offset);
 
 	if (is_parent_tc(path)) { 
 
@@ -392,15 +392,15 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 		value = fh->value + offset;
 		value_len = fh->value_len - offset;
 
-		fprintf(stderr, "value_len: %d\n", value_len);
+		debug("value_len: %d", value_len);
 
 		if (value_len <= size) {
-			fprintf(stderr, "request bigger or equals to value_len (: %d) [writing: %d | requested: %d]\n", fh->value_len, fh->value_len, size);
+			debug("request bigger or equals to value_len (: %d) [writing: %d | requested: %d]", fh->value_len, fh->value_len, size);
 			memcpy(buf, value, value_len);
 			res = value_len;
 		}
 		else {
-			fprintf(stderr, "requested smaller than value_len (: %d) [writing: %d | requested: %d]\n", fh->value_len, size, size);
+			debug("requested smaller than value_len (: %d) [writing: %d | requested: %d]", fh->value_len, size, size);
 			memcpy(buf, value, size);
 			res = size;
 		}
@@ -453,7 +453,7 @@ static int xmp_statfs(const char *path, struct statvfs *stbuf)
 
 static int xmp_release(const char *path, struct fuse_file_info *fi)
 {
-	fprintf(stderr, "releasing %s\n",path);
+	debug("releasing %s",path);
 	(void) path;
 	(void) fi;
 	tc_filehandle_t *fh;	
@@ -481,7 +481,7 @@ static int xmp_release(const char *path, struct fuse_file_info *fi)
 static int xmp_releasedir(const char *path, struct fuse_file_info *fi)
 {
 	
-	fprintf(stderr, "releasing dir %s\n",path);
+	debug("releasing dir %s",path);
 
 	tc_dir_meta_t *tc_dir = NULL;
 

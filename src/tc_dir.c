@@ -12,14 +12,14 @@ tc_dir_meta_t *tc_dir_allocate(const char *path)
 	tc_dir_meta_t *tc_dir	= NULL;
 
 	if (path == NULL) {
-		debug("tc_dir_allocate got null path");
+		error("tc_dir_allocate got null path");
 		return NULL;
 	}
 
 	tc_dir = (tc_dir_meta_t *) malloc(sizeof(tc_dir_meta_t));
 
 	if (tc_dir == NULL) {
-		debug("can't allocate memory for tc_dir_meta_t struct");
+		error("can't allocate memory for tc_dir_meta_t struct");
 		return NULL;
 	}
 
@@ -28,8 +28,13 @@ tc_dir_meta_t *tc_dir_allocate(const char *path)
 	tc_dir->refcount 	= 0;
 	tc_dir->initialized = 0;
 
+	if (tc_dir->path == NULL) {
+		error("can't allocate memory for tc_dir->path");
+		goto tc_dir_free;
+	}
+
 	if (pthread_mutex_init(&tc_dir->lock, NULL) != 0) {
-		debug("can't init rwlock for tc_dir");
+		error("can't init rwlock for tc_dir");
 		goto tc_dir_free;
 	}
 
@@ -64,7 +69,7 @@ tc_dir_meta_t *tc_dir_init(tc_dir_meta_t *tc_dir)
 inline int tc_dir_dec_refcount(tc_dir_meta_t *tc_dir)
 {
 	if (tc_dir == NULL) {
-		debug("tried to refrence dec a null tc_dir");
+		error("tried to refrence dec a null tc_dir");
 		return 0;
 	}
 
@@ -83,7 +88,7 @@ inline int tc_dir_dec_refcount(tc_dir_meta_t *tc_dir)
 inline int tc_dir_lock(tc_dir_meta_t *tc_dir)
 {
 	if (tc_dir == NULL) {
-		debug("unable to lock tc_dir - it's null");
+		error("unable to lock tc_dir - it's null");
 		return 0;
 	}
 
@@ -104,7 +109,7 @@ inline int tc_dir_lock(tc_dir_meta_t *tc_dir)
 		rc = 1;
 	}
 	else 
-		debug("unable to lock tc_dir");
+		error("unable to lock tc_dir");
 
 #if LOCK_DEBUG
 	if (caller != NULL)
@@ -117,7 +122,7 @@ inline int tc_dir_lock(tc_dir_meta_t *tc_dir)
 inline int tc_dir_trylock(tc_dir_meta_t *tc_dir)
 {
 	if (tc_dir == NULL) {
-		debug("unable to lock tc_dir - it's null");
+		error("unable to lock tc_dir - it's null");
 		return 0;
 	}
 
@@ -171,7 +176,7 @@ inline int tc_dir_unlock(tc_dir_meta_t *tc_dir)
 		return 1;
 	}
 	else 
-		debug("tried tc_dir_unlock on null tc_dir");
+		error("tried tc_dir_unlock on null tc_dir");
 
 	return 0;
 }
@@ -199,6 +204,6 @@ void tc_dir_free(tc_dir_meta_t * tc_dir)
 		free(tc_dir);
 	}
 	else
-		debug("asked to free a NULL tc_dir");
+		error("asked to free a NULL tc_dir");
 }
 

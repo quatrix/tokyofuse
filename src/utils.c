@@ -10,13 +10,17 @@
 #include "utils.h"
 
 
+//
+//  /baba/pita/vova -> /baba/pita
 
 char *parent_path(const char *path)
 {
 	char *tc_path, *p_path;
 	size_t tc_path_len;
 
-	tc_path = strdup(path);
+	if ((tc_path = strdup(path)) == NULL)
+		return NULL;
+
 	tc_path_len = strlen(tc_path);
 
 	// if directory, get parent directory
@@ -30,6 +34,7 @@ char *parent_path(const char *path)
 		return tc_path;
 	}
 
+	free(tc_path);
 	return NULL;
 }
 
@@ -147,20 +152,3 @@ size_t unique_id(void)
 	return uid++;
 }
 
-#define DEBUG 1
-
-#if DEBUG
-void debug(const char *format, ...) 
-{
-	va_list va;
-
-	va_start(va, format);
-
-	vfprintf(stderr, format, va);
-	fprintf(stderr, "\n");
-
-	va_end(va);
-}
-#else
-void debug(const char *format, ...) {}
-#endif
