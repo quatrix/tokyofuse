@@ -39,7 +39,7 @@
 
 
 #define TC_GC_SLEEP 5 // 5 seconds between every gc run
-#define CACHEGRIND 99999
+//#define CACHEGRIND 99999
 
 
 static inline tc_dir_meta_t *tokyofuse_get_tc_dir(struct fuse_file_info *fi)
@@ -57,21 +57,61 @@ static int xmp_getattr(const char *path, struct stat *stbuf)
 #ifdef CACHEGRIND
 	static int i = 0;
 
+	if (i % 1000 == 0)
+		error("request number %d", i);
+	
+
 	if (++i == CACHEGRIND)
 		exit(0);
 #endif
 
-	if (is_tc(path))
-		tc_dir_stat(stbuf);
-	else if (is_parent_tc(path)) {
+
+	size_t path_len = strlen(path);
+//	double t0, td;
+	
+
+//	t0 = get_time();
+
+	if (is_parent_tc(path, path_len)) {
 		debug("%s has tc parent", path);
-		tc_file_stat(stbuf, metadata_get_filesize(path));
+
+/* 
+		td = (get_time() - t0) * 1000;
+		if (td > 100) 
+			error("getattr (is_parent_tc) took: %0.3f msec", td);
+		t0 = get_time();
+*/
+
+		tc_file_stat(stbuf, metadata_get_filesize(path, path_len));
+/* 
+		td = (get_time() - t0) * 1000;
+		if (td > 100) 
+			error("getattr (metadata_get_filesize) took: %0.3f msec", td);
+		t0 = get_time();
+*/
 	}
-	else if (has_suffix(path, ".tc"))
+	else if (is_tc(path, path_len)) {
 		tc_dir_stat(stbuf);
+/*  
+		td = (get_time() - t0) * 1000;
+		if (td > 100) 
+			error("getattr (is_tc) took: %0.3f msec", td);
+		t0 = get_time();
+*/
+	}
+	else if (has_suffix(path, ".tc")) {
+		tc_dir_stat(stbuf);
+/* 
+		td = (get_time() - t0) * 1000;
+		if (td > 100) 
+			error("getattr (has_suffix) took: %0.3f msec", td);
+		t0 = get_time();
+*/
+	}
 	else 
 		if (lstat(path, stbuf) == -1)
 			return -errno;
+
 
 	return 0;
 }
@@ -80,7 +120,9 @@ static int xmp_access(const char *path, int mask)
 {
 	debug("access called on %s", path);
 
-	if (is_tc(path))
+	size_t path_len = strlen(path);
+
+	if (is_tc(path, path_len))
 		debug("access %s has a tc parent", path);
 	else if (access(path, mask) == -1)
 		return -errno;
@@ -103,12 +145,17 @@ static int xmp_readlink(const char *path, char *buf, size_t size)
 
 static int xmp_opendir(const char *path, struct fuse_file_info *fi)
 {
-	if (is_tc(path)) {
+	size_t path_len = strlen(path);
+
+	if (is_tc(path, path_len)) {
 		tc_dir_meta_t *tc_dir = NULL;
 
 		debug("'%s' is tc", path); 
 		
-		tc_dir = metadata_get_tc(path);
+		debug("hey");
+		tc_dir = metadata_get_tc(path, path_len);
+
+		debug("ho");
 
 		if (tc_dir == NULL) {
 			debug("failed to open tc metadata for %s", path);
@@ -132,11 +179,11 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 	(void) offset;
 
-	if (is_tc(path)) {
+	size_t path_len = strlen(path);
+
+	if (is_tc(path, path_len)) {
 		tc_dir_meta_t *tc_dir = NULL;
 		tc_file_meta_t *tc_file = NULL;
-
-
 
 		tc_dir = tokyofuse_get_tc_dir(fi);
 
@@ -154,6 +201,8 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 				break;
 		}
 */
+
+		fprintf(stderr, "DEBUG :: in readdir!!\n");
 
 		for (tc_file=get_next_tc_file(tc_dir, tc_file); tc_file != NULL; tc_file = get_next_tc_file(tc_dir, tc_file)) {
 			struct stat st;
@@ -338,7 +387,14 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 
 	debug("wants to open %s", path);
 
-	if (is_parent_tc(path)) { 
+	size_t path_len = strlen(path);
+//	double t0, td;
+	
+
+
+	//t0 = get_time();
+
+	if (is_parent_tc(path, path_len)) { 
 		debug("%s has a tc parent", path);
 
 		tc_filehandle_t *fh	= (tc_filehandle_t *)malloc(sizeof(tc_filehandle_t));
@@ -349,11 +405,13 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 		}
 
 		//fh->value = metadata_get_value(path, &fh->value_len);
-		if (!metadata_get_value(path, fh)) {
+
+		if (!metadata_get_value(path, path_len, fh)) {
 			debug("metadata_get_value failed");
 			free(fh);
 			return -errno;
 		}
+
 
 		fi->fh = (uintptr_t)fh;
 	}
@@ -364,6 +422,12 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 
 		close(res);
 	}
+/* 
+	td = (get_time() - t0) * 1000;
+
+	if (td > 100) 
+		error("xmp_open took: %0.3f msec", td);
+*/
 	return 0;
 }
 
@@ -379,13 +443,9 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 	debug("wants to read %d bytes from %s", size, path);
 	//debug("wants to read %d from %s (offset: %d)", size, path, offset);
 
-	if (is_parent_tc(path)) { 
+	fh = tokyofuse_get_tc_fh(fi);
 
-		fh = tokyofuse_get_tc_fh(fi);
-
-		if (fh == NULL)
-			return -errno;
-
+	if (fh != NULL) {
 		if (fh->value == NULL)
 			return -errno;
 
@@ -458,12 +518,9 @@ static int xmp_release(const char *path, struct fuse_file_info *fi)
 	(void) fi;
 	tc_filehandle_t *fh;	
 
-	if (is_parent_tc(path)) { 
-		fh = tokyofuse_get_tc_fh(fi);
+	fh = tokyofuse_get_tc_fh(fi);
 
-		if (fh == NULL)
-			return -errno;
-
+	if (fh != NULL) {
 		if (fh->value != NULL)
 			free(fh->value);
 

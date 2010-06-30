@@ -53,12 +53,15 @@ END_TEST
 
 START_TEST(test_metadata_get_tc)
 {
-	fail_unless(metadata_get_tc(NULL) == NULL, "metadata_get_tc(NULL) should return null");
-	fail_unless(metadata_get_tc(fake_tc_file) == NULL, "get_tc for non tc path should return null");
+	fail_unless(metadata_get_tc(NULL, 0) == NULL, "metadata_get_tc(NULL) should return null");
+	fail_unless(metadata_get_tc(fake_tc_file, strlen(fake_tc_file)) == NULL, "get_tc for non tc path should return null");
 
-	tc_dir = metadata_get_tc(tc_test_file);
+
+	size_t tc_test_file_len = strlen(tc_test_file);
+	tc_dir = metadata_get_tc(tc_test_file, tc_test_file_len);
 
 	fail_if(tc_dir == NULL, "valid tc path should return tc_dir");
+	fail_unless(tc_dir->path_len == tc_test_file_len, "path_len %d != %d", tc_dir->path_len, tc_test_file_len);
 	fail_unless(strcmp(tc_dir->path, tc_test_file) == 0, "should have correct path");
 	fail_unless(tc_dir->initialized == 1,  "new tc_dir should be initialized");
 	
@@ -68,14 +71,14 @@ START_TEST(test_metadata_get_tc)
 	fail_unless(tc_dir_lock(tc_dir), "should be able to lock unlocked tc_dir" );
 	fail_unless(tc_dir_unlock(tc_dir), "should be able to unlock locked tc_dir" );
 
-	fail_unless(metadata_get_tc(tc_test_file) == tc_dir, "getting the same path again should return same tc_dir");
+	fail_unless(metadata_get_tc(tc_test_file, tc_test_file_len) == tc_dir, "getting the same path again should return same tc_dir");
 	tc_dir_refcount++;
 
 	fail_unless(tc_dir->refcount == tc_dir_refcount,  "tc_dir->refcount (%d) should be %d", tc_dir->refcount, tc_dir_refcount);
 	fail_unless(tc_dir_lock(tc_dir), "should be able to lock unlocked tc_dir" );
 	fail_unless(tc_dir_unlock(tc_dir), "should be able to unlock locked tc_dir" );
 
-	tc_dir2 = metadata_get_tc(tc_test_file2);
+	tc_dir2 = metadata_get_tc(tc_test_file2, strlen(tc_test_file2));
 
 	fail_if(tc_dir2 == NULL, "valid tc path should return tc_dir (2)");
 	fail_if(tc_dir == tc_dir2, "getting another path should return a different objects");
@@ -101,7 +104,8 @@ START_TEST(test_metadata_add_to_hash)
 
 	fail_if(t == NULL, "failed to malloc new tc_dir_meta_t needed for test");
 
-	t->path = strdup(some_key);
+	strcpy(t->path, some_key);
+	t->path_len = strlen(some_key);
 	t->hdb = NULL;
 	t->initialized = 0;
 	t->refcount = 0;
@@ -120,23 +124,23 @@ START_TEST(test_metadata_lookup_path)
 	tc_dir_meta_t *t_lookup = NULL;
 
 	tc_dir_refcount++;
-	fail_unless(metadata_lookup_path(tc_test_file, &tc_dir_lookup, TC_LOCK_READ) == TC_EXISTS, "looking up existent tc_dir should return TC_EXISTS");
+	fail_unless(metadata_lookup_path(tc_test_file, strlen(tc_test_file), &tc_dir_lookup, TC_LOCK_READ) == TC_EXISTS, "looking up existent tc_dir should return TC_EXISTS");
 
 	tc_dir2_refcount++;
-	fail_unless(metadata_lookup_path(tc_test_file2, &tc_dir2_lookup, TC_LOCK_READ) == TC_EXISTS, "looking up another existent tc_dir should return TC_EXISTS");
-	fail_unless(metadata_lookup_path(some_key, &t_lookup, TC_LOCK_READ) == TC_ERROR, "looking up key that can't be locked TC_ERROR");
+	fail_unless(metadata_lookup_path(tc_test_file2, strlen(tc_test_file2), &tc_dir2_lookup, TC_LOCK_READ) == TC_EXISTS, "looking up another existent tc_dir should return TC_EXISTS");
+	fail_unless(metadata_lookup_path(some_key, strlen(some_key), &t_lookup, TC_LOCK_READ) == TC_ERROR, "looking up key that can't be locked TC_ERROR");
 
 	fail_unless(pthread_mutex_init(&t->lock, NULL) == 0, "adding mutex to t");
 
-	fail_unless(metadata_lookup_path(some_key, &t_lookup, TC_LOCK_READ) == TC_NOT_FOUND, "looking up key that isn't initialized should return TC_NOT_FOUND");
+	fail_unless(metadata_lookup_path(some_key, strlen(some_key), &t_lookup, TC_LOCK_READ) == TC_NOT_FOUND, "looking up key that isn't initialized should return TC_NOT_FOUND");
 
 	t->initialized = 1;
 
-	fail_unless(metadata_lookup_path(some_key, &t_lookup, TC_LOCK_WRITE | TC_LOCK_TRY) == TC_EXISTS, "after initializing it, should return TC_EXISTS");
+	fail_unless(metadata_lookup_path(some_key, strlen(some_key), &t_lookup, TC_LOCK_WRITE | TC_LOCK_TRY) == TC_EXISTS, "after initializing it, should return TC_EXISTS");
 	t_refcount++;
 
 	t_refcount++;
-	fail_unless(metadata_lookup_path(some_key, &t_lookup, TC_LOCK_WRITE | TC_LOCK_TRY | TC_LOCK_DONT_UNLOCK) == TC_EXISTS, "(2) after initializing it, should return TC_EXISTS");
+	fail_unless(metadata_lookup_path(some_key, strlen(some_key), &t_lookup, TC_LOCK_WRITE | TC_LOCK_TRY | TC_LOCK_DONT_UNLOCK) == TC_EXISTS, "(2) after initializing it, should return TC_EXISTS");
 	fail_if(metadata_lock(TC_LOCK_WRITE | TC_LOCK_TRY), "lookup shouldn't have released write lock");
 	fail_unless(metadata_unlock(), "should be able to unlock");
 
@@ -169,7 +173,7 @@ START_TEST(test_metadata_get_filesize)
 	for (i = 0; i < 4; i++) {
 		sprintf(key, "%s/%s", tc_test_file, excpected_key_value[i][0]);
 
-		size = metadata_get_filesize(key);
+		size = metadata_get_filesize(key, strlen(key));
 
 		fail_unless(size == strlen(excpected_key_value[i][1]), "get size: wrong size %d (expected: %d)", size, excpected_key_value[i][1]);
 	}
@@ -177,7 +181,7 @@ START_TEST(test_metadata_get_filesize)
 	for (i = 0; i < 2; i++) {
 		sprintf(key, "%s/%s", tc_test_file2, excpected_key_value2[i][0]);
 
-		size = metadata_get_filesize(key);
+		size = metadata_get_filesize(key, strlen(key));
 
 		fail_unless(size == strlen(excpected_key_value2[i][1]), "(2) get size: wrong size %d (expected: %d)", size, excpected_key_value2[i][1]);
 	}
@@ -185,8 +189,8 @@ START_TEST(test_metadata_get_filesize)
 	fail_unless(tc_dir->refcount == tc_dir_refcount,  "tc_dir->refcount (%d) should be %d", tc_dir->refcount, tc_dir_refcount);
 	fail_unless(tc_dir2->refcount == tc_dir2_refcount,  "tc_dir2->refcount (%d) should be %d", tc_dir2->refcount, tc_dir2_refcount);
 
-	fail_unless(metadata_get_filesize("some path") == -1, "for non existent path return -1");
-	fail_unless(metadata_get_filesize(NULL) == -1, "for NULL path return -1");
+	fail_unless(metadata_get_filesize("some path", strlen("some path")) == -1, "for non existent path return -1");
+	fail_unless(metadata_get_filesize(NULL, 0) == -1, "for NULL path return -1");
 
 }
 END_TEST
@@ -202,7 +206,7 @@ START_TEST(test_metadata_get_value)
 	for (i = 0; i < 4; i++) {
 		sprintf(key, "%s/%s", tc_test_file, excpected_key_value[i][0]);
 
-		fail_unless(metadata_get_value(key, &fh));
+		fail_unless(metadata_get_value(key, strlen(key), &fh));
 
 		fail_unless(fh.value_len == strlen(excpected_key_value[i][1]), 
 			"get value: wrong value_len %d (excpected: %d)", fh.value_len, excpected_key_value[i][1]);
@@ -216,7 +220,7 @@ START_TEST(test_metadata_get_value)
 	for (i = 0; i < 2; i++) {
 		sprintf(key, "%s/%s", tc_test_file2, excpected_key_value2[i][0]);
 
-		fail_unless(metadata_get_value(key, &fh));
+		fail_unless(metadata_get_value(key, strlen(key), &fh));
 
 		fail_unless(fh.value_len == strlen(excpected_key_value2[i][1]), 
 			"(2) get value: wrong value_len %d (excpected: %d)", fh.value_len, excpected_key_value2[i][1]);
@@ -231,9 +235,9 @@ START_TEST(test_metadata_get_value)
 	fail_unless(tc_dir->refcount == tc_dir_refcount,  "tc_dir->refcount (%d) should be %d", tc_dir->refcount, tc_dir_refcount);
 	fail_unless(tc_dir2->refcount == tc_dir2_refcount,  "tc_dir2->refcount (%d) should be %d", tc_dir2->refcount, tc_dir2_refcount);
 
-	fail_unless(metadata_get_value("some path", &fh) == 0, "for non existent path return 0");
-	fail_unless(metadata_get_value(NULL, &fh) == 0, "for NULL path return 0");
-	fail_unless(metadata_get_value("tc_backend_test/foo", NULL) == 0, "for NULL fh return 0");
+	fail_unless(metadata_get_value("some path", strlen("some path"), &fh) == 0, "for non existent path return 0");
+	fail_unless(metadata_get_value(NULL, 0,  &fh) == 0, "for NULL path return 0");
+	fail_unless(metadata_get_value("tc_backend_test/foo", strlen("tc_backend_test/foo"), NULL) == 0, "for NULL fh return 0");
 
 }
 END_TEST
@@ -364,8 +368,8 @@ START_TEST(test_metadata_free_unused_tc_dir)
 	int i, size;
 	char key[50];
 
-	fail_unless(metadata_lookup_path(tc_test_file, &tc_dir_lookup, TC_LOCK_READ | TC_LOCK_TRY) == TC_NOT_FOUND, "looking up object that should be freed");
-	fail_unless(metadata_lookup_path(some_key, &t_lookup, TC_LOCK_READ | TC_LOCK_TRY) == TC_EXISTS, "but objects with higher refcount should stay");
+	fail_unless(metadata_lookup_path(tc_test_file, strlen(tc_test_file), &tc_dir_lookup, TC_LOCK_READ | TC_LOCK_TRY) == TC_NOT_FOUND, "looking up object that should be freed");
+	fail_unless(metadata_lookup_path(some_key, strlen(some_key), &t_lookup, TC_LOCK_READ | TC_LOCK_TRY) == TC_EXISTS, "but objects with higher refcount should stay");
 	t_refcount++;
 
 	fail_unless(t->refcount == t_refcount,  "t->refcount (%d) should be %d", t->refcount, t_refcount);
@@ -375,7 +379,7 @@ START_TEST(test_metadata_free_unused_tc_dir)
 
 	metadata_free_unused_tc_dir();
 
-	fail_unless(metadata_lookup_path(some_key, &t_lookup, TC_LOCK_READ | TC_LOCK_TRY) == TC_EXISTS, "but objects with higher refcount should stay");
+	fail_unless(metadata_lookup_path(some_key, strlen(some_key), &t_lookup, TC_LOCK_READ | TC_LOCK_TRY) == TC_EXISTS, "but objects with higher refcount should stay");
 	t_refcount++;
 
 	fail_unless(t->refcount == t_refcount,  "t->refcount (%d) should be %d", t->refcount, t_refcount);
@@ -384,12 +388,12 @@ START_TEST(test_metadata_free_unused_tc_dir)
 	t_refcount = 0;
 	metadata_free_unused_tc_dir();
 
-	fail_unless(metadata_lookup_path(some_key, &t_lookup, TC_LOCK_READ | TC_LOCK_TRY) == TC_NOT_FOUND, "refcount 0 object should have been freed");
+	fail_unless(metadata_lookup_path(some_key, strlen(some_key), &t_lookup, TC_LOCK_READ | TC_LOCK_TRY) == TC_NOT_FOUND, "refcount 0 object should have been freed");
 
 	for (i = 0; i < 2; i++) {
 		sprintf(key, "%s/%s", tc_test_file2, excpected_key_value2[i][0]);
 
-		fail_unless(metadata_get_value(key, &fh));
+		fail_unless(metadata_get_value(key, strlen(key), &fh));
 
 		fail_unless(fh.value_len == strlen(excpected_key_value2[i][1]), 
 			"get value: wrong value_len %d (excpected: %d)", fh.value_len, excpected_key_value2[i][1]);

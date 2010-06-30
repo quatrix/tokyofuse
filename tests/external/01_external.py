@@ -51,8 +51,6 @@ class TokyoFuseTest(unittest.TestCase):
 		f.close()
 
 	def setUp(self):
-		print "%s -o modules=subdir,subdir=%s %s" % (TC_FUSE_BINARY, TC_PREFIX, TC_FUSE_MOUNT)
-		return
 		self.setup_workdirs()
 
 		os.system("fusermount -u %s &>/dev/null" % TC_FUSE_MOUNT)
@@ -60,7 +58,6 @@ class TokyoFuseTest(unittest.TestCase):
 		self.assertFalse(os.system("%s -o modules=subdir,subdir=%s %s" % (TC_FUSE_BINARY, TC_PREFIX, TC_FUSE_MOUNT)))
 
 	def tearDown(self):
-		return
 		self.assertFalse(os.system("fusermount -u %s" % TC_FUSE_MOUNT))
 
 

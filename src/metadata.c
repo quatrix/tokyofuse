@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,7 +56,7 @@ int metadata_init(void)
 }
 
 
-tc_dir_meta_t *metadata_get_tc(const char *path)
+tc_dir_meta_t *metadata_get_tc(const char *path, size_t path_len)
 {
 	if (path == NULL)
 		return NULL;
@@ -66,7 +65,7 @@ tc_dir_meta_t *metadata_get_tc(const char *path)
 	
 	debug("adding %s to metadata hash", path);
 
-	if (metadata_lookup_path(path, &tc_dir, TC_LOCK_READ) != TC_NOT_FOUND) {
+	if (metadata_lookup_path(path, path_len, &tc_dir, TC_LOCK_READ) != TC_NOT_FOUND) {
 		return tc_dir;
 	}
 
@@ -75,10 +74,10 @@ tc_dir_meta_t *metadata_get_tc(const char *path)
 	// so multiple threads could be waiting for this write lock
 	// and one of them could have already created the key
 	
-	if (metadata_lookup_path(path, &tc_dir, TC_LOCK_WRITE | TC_LOCK_DONT_UNLOCK ) != TC_NOT_FOUND)
+	if (metadata_lookup_path(path, path_len, &tc_dir, TC_LOCK_WRITE | TC_LOCK_DONT_UNLOCK ) != TC_NOT_FOUND)
 		goto return_tc;
 
-	if ((tc_dir = tc_dir_allocate(path)) == NULL)
+	if ((tc_dir = tc_dir_allocate(path, path_len)) == NULL)
 		goto return_tc;
 
 	if (!metadata_add_to_hash(tc_dir))
@@ -91,7 +90,10 @@ tc_dir_meta_t *metadata_get_tc(const char *path)
 	else
 		error("failed to initialize tc_dir %s", path);
 
+	
 	tc_dir_unlock(tc_dir);
+	debug("lala: %d", tc_dir->initialized);
+
 
 	return tc_dir->initialized ? tc_dir : NULL;
 
@@ -113,11 +115,11 @@ int metadata_add_to_hash(tc_dir_meta_t *tc_dir)
 	if (tc_dir == NULL)
 		return 0;
 
-	HASH_ADD_KEYPTR(hh, meta, tc_dir->path, strlen(tc_dir->path), tc_dir);
+	HASH_ADD_KEYPTR(hh, meta, tc_dir->path, tc_dir->path_len, tc_dir);
 
 	// checking that it actually inserted
 	// FIXME: not sure if it's necessery
-	HASH_FIND_STR(meta, tc_dir->path, __tc_dir);
+	HASH_FIND_STR_N(meta, tc_dir->path, tc_dir->path_len, __tc_dir);
 
 	if (tc_dir == __tc_dir)
 		return 1;
@@ -133,7 +135,7 @@ tc_file_meta_t *get_next_tc_file(tc_dir_meta_t *tc_dir, tc_file_meta_t *last_tc_
 	const char *fetched_data;
 	char *current_key = NULL;
 	char *last_key = last_tc_file == NULL ? NULL : last_tc_file->path;
-	int last_key_len = last_key == NULL ? 0 : strlen(last_key);
+	int last_key_len = last_key == NULL ? 0 : last_tc_file->path_len;
 
 	int fetched_data_len = 0;
 	int current_key_len = 0;
@@ -154,6 +156,7 @@ tc_file_meta_t *get_next_tc_file(tc_dir_meta_t *tc_dir, tc_file_meta_t *last_tc_
 		}
 
 		tc_file->path = strndup(current_key, current_key_len);
+		tc_file->path_len = current_key_len;
 		tc_file->size = fetched_data_len;
 
 		free(current_key);
@@ -172,7 +175,7 @@ void free_tc_file(tc_file_meta_t *tc_file)
 	}
 }
 
-TC_RC metadata_lookup_path(const char *path, tc_dir_meta_t **tc_dir_ptr, TC_LOCKTYPE lock)
+TC_RC metadata_lookup_path(const char *path, size_t path_len, tc_dir_meta_t **tc_dir_ptr, TC_LOCKTYPE lock)
 {
 	TC_RC rc = TC_ERROR;
 	tc_dir_meta_t *tc_dir = NULL;
@@ -184,16 +187,17 @@ TC_RC metadata_lookup_path(const char *path, tc_dir_meta_t **tc_dir_ptr, TC_LOCK
 	if (!metadata_lock(lock))
 		return rc;
 
-	HASH_FIND_STR(meta, path, tc_dir);
+	HASH_FIND_STR_N(meta, path, path_len, tc_dir);
 
 	if (tc_dir != NULL) {
 		debug("found %s in hash", path);
 
-		if (!tc_dir_lock(tc_dir)) 
-			goto error;
+		//if (!tc_dir_lock(tc_dir)) 
+		//	goto error;
 
-		if (tc_dir->initialized) {
-			tc_dir->refcount++;
+		if (tc_dir->initialized && __sync_fetch_and_add(&tc_dir->refcount, 1)) {
+		//	tc_dir->refcount++;
+
 			debug("key %s already in metadata hash (refcount incs to %d)", path, tc_dir->refcount);
 			*tc_dir_ptr = tc_dir;
 			rc = TC_EXISTS;
@@ -203,12 +207,12 @@ TC_RC metadata_lookup_path(const char *path, tc_dir_meta_t **tc_dir_ptr, TC_LOCK
 			rc = TC_NOT_FOUND;
 		}
 
-		tc_dir_unlock(tc_dir);
+		//tc_dir_unlock(tc_dir);
 	}
 	else 
 		rc = TC_NOT_FOUND;
 
-error:
+//error:
 
 	if (!(lock & TC_LOCK_DONT_UNLOCK))
 		metadata_unlock();
@@ -217,19 +221,27 @@ error:
 }
 
 
-int metadata_get_filesize(const char *path)
+int metadata_get_filesize(const char *path, size_t path_len)
 {
 	int size;
-	char *parent = NULL;
+	char parent[MAX_PATH_LEN];
 	char *leaf = NULL;
+	size_t parent_len;
 	tc_dir_meta_t *tc_dir;
 
 	if (path == NULL) {
 		error("metadata_get_filesize: null path");
 		return -1;
 	}
+
+	if (!s_strncpy(parent, path, path_len, MAX_PATH_LEN)) {
+		error("safe copy failed, bah");
+		return -1;
+	}
 	
-	if ((parent = parent_path(path)) == NULL) {
+	parent_len = parent_path(parent, path_len);
+
+	if (parent_len == 0) {
 		error("metadata_get_filesize: null parent");
 		return -1;
 	}
@@ -241,8 +253,7 @@ int metadata_get_filesize(const char *path)
 
 	debug("fetching filesize for %s/%s", parent, leaf);
 	
-	tc_dir = metadata_get_tc(parent);
-	free(parent);
+	tc_dir = metadata_get_tc(parent, parent_len);
 
 	if (tc_dir == NULL)
 		return -1;
@@ -258,13 +269,14 @@ int metadata_get_filesize(const char *path)
 
 
 
-int metadata_get_value(const char *path, tc_filehandle_t *fh)
+int metadata_get_value(const char *path, size_t path_len, tc_filehandle_t *fh)
 {
 	tc_dir_meta_t *tc_dir;
 	char *value = NULL;
-	char *parent = NULL;
+	char parent[MAX_PATH_LEN];
 	char *leaf = NULL;
 	int value_len = 0;
+	size_t parent_len;
 
 	if (path == NULL) {
 		error("metadata_get_value: null path");
@@ -275,9 +287,16 @@ int metadata_get_value(const char *path, tc_filehandle_t *fh)
 		error("metadata_get_value: null fh");
 		return 0;
 	}
+
+	if (!s_strncpy(parent, path, path_len, MAX_PATH_LEN)) {
+		error("safe copy failed, bah");
+		return 0;
+	}
 	
-	if ((parent = parent_path(path)) == NULL) {
-		error("metadata_get_value: null parent");
+	parent_len = parent_path(parent, path_len);
+
+	if (parent_len == 0) {
+		error("metadata_get_value: no parent");
 		return 0;
 	}
 
@@ -288,8 +307,7 @@ int metadata_get_value(const char *path, tc_filehandle_t *fh)
 
 	debug("fetching value for %s/%s", parent, leaf);
 
-	tc_dir = metadata_get_tc(parent);
-	free(parent);
+	tc_dir = metadata_get_tc(parent, parent_len);
 
 	if (tc_dir == NULL)
 		return 0;
@@ -337,8 +355,11 @@ inline int metadata_lock(TC_LOCKTYPE locktype)
 	char *caller = get_caller();
 	char *lock_str = metadata_lock_str(locktype);
 #endif 
+	//double t0, td;
 	int rc = 0;
 	int l_rc = -1;
+
+	//t0 = get_time();
 	
 #if LOCK_DEBUG
 	debug("locking meta (req: %u caller: %s type: %s)", uid, caller, lock_str);
@@ -371,7 +392,12 @@ free_caller:
 	if (lock_str != NULL)
 		free(lock_str);
 #endif
+/* 
+	td = (get_time() - t0) * 1000;
 
+	if (td > 10) 
+		error("getting metadata lock took: %0.3f msec (rc: %d)", td,rc);
+*/
 	return rc;
 }
 
@@ -401,6 +427,7 @@ void metadata_free_unused_tc_dir(void)
 {
 	tc_dir_meta_t *tc_dir = NULL;
 	tc_dir_meta_t *tc_dir_next = NULL;
+	int r;
 
 	for (tc_dir = meta; tc_dir != NULL; tc_dir = tc_dir_next) {
 		// in case we free tc_dir
@@ -411,8 +438,9 @@ void metadata_free_unused_tc_dir(void)
 			if (tc_dir_lock(tc_dir)) {
 		#else
 		if (metadata_lock(TC_LOCK_WRITE | TC_LOCK_TRY)) {
-			if (tc_dir_trylock(tc_dir)) {
+			//if (tc_dir_trylock(tc_dir)) {
 		#endif
+			if (__sync_fetch_and_sub(&tc_dir->refcount, 1) == 0 ) { 
 				if (tc_dir->refcount ==  0) { 
 					debug("metadata_free_unused_tc_dir: refcount for %s is 0 -- freeing it", tc_dir->path);
 
@@ -427,7 +455,10 @@ void metadata_free_unused_tc_dir(void)
 				else 
 					tc_dir_unlock(tc_dir);
 			}
-			
+			else {
+				r = __sync_fetch_and_add(&tc_dir->refcount, 1);
+			}
+
 			metadata_unlock();
 		}
 

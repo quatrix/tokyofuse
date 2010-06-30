@@ -9,12 +9,14 @@
 
 
 
-char *to_tc_path(const char *path, char *dst_path)
+char *to_tc_path(const char *path, size_t path_len, char *dst_path)
 {
-	if (path == NULL)
+	if ((path_len + TC_SUFFIX_LEN) > MAX_PATH_LEN)
 		return NULL;
-	
-	sprintf(dst_path, "%s.tc", path);
+
+	memcpy(dst_path, path, path_len);
+	memcpy(dst_path + path_len, TC_SUFFIX, TC_SUFFIX_LEN);
+
 	return dst_path;
 }
 
@@ -46,15 +48,16 @@ void tc_file_stat(struct stat *stbuf, size_t size)
 	stbuf->st_size = size;
 }
 
-int is_tc(const char *path) 
+int is_tc(const char *path, size_t path_len) 
 {
 	if (path == NULL)
 		return 0;
 
-	size_t path_len = strlen(path);
-	char tc_path[path_len + TC_PREFIX_LEN + 1];
 
-	if (to_tc_path(path, tc_path) == NULL)
+	//size_t path_len = strlen(path);
+	char tc_path[MAX_PATH_LEN];
+
+	if (to_tc_path(path, path_len, tc_path) == NULL)
 		return 0;
 
 	if (file_exists(tc_path))
@@ -63,22 +66,26 @@ int is_tc(const char *path)
 	return 0;
 }
 
-int is_parent_tc(const char *path)
+int is_parent_tc(const char *path, size_t path_len)
 {
-	int rc = 0;
+	char parent[MAX_PATH_LEN];
+	size_t parent_len = 0;
 	
 	if (path == NULL)
 		return 0;
 
-	char *parent = parent_path(path);
+	if (!s_strncpy(parent, path, path_len, MAX_PATH_LEN)) {
+		error("safe copy failed, bah");
+		return 0;
+	}
 
-	if (parent == NULL) // no parents
+	parent_len = parent_path(parent, path_len);
+
+	if (!parent_len)
 		return 0;
 
-	if (is_tc(parent))
-		rc = 1;
+	if (is_tc(parent, parent_len))
+		return 1;
 
-	free(parent);
-
-	return rc;	
+	return 0;
 }

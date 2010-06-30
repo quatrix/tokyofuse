@@ -6,6 +6,8 @@
 #include "utils.h"
 
 
+#define MAX_PATH_LEN 100
+
 START_TEST(test_has_prefix)
 {
 	fail_unless(has_suffix("abcd", "cd"), "abcd ends with cd");
@@ -21,18 +23,40 @@ END_TEST
 
 START_TEST(test_parent_path)
 {
-	char *parent = NULL;
 
-	parent = parent_path("/hey/ho/lets");
-	fail_unless(strcmp(parent, "/hey/ho") == 0, "parent of /hey/ho/lets is /hey/ho");
-	free(parent);
-	parent = NULL;
+	char parent[30] = "/hey/ho/lets";
+	char *expected_result = "/hey/ho";
+	size_t expected_result_len = strlen(expected_result);
+	size_t path_len = strlen(parent);
+	size_t parent_len;
 
-	parent = parent_path("/hey/ho/lets/");
-	fail_unless(strcmp(parent, "/hey/ho") == 0, "parent of /hey/ho/lets/ is /hey/ho");
-	free(parent);
-	parent = NULL;
+	parent_len = parent_path(parent, path_len);
 
+
+	
+	fail_unless(strcmp(parent, expected_result) == 0, "parent of /hey/ho/lets is /hey/ho");
+	fail_unless(parent_len = expected_result_len );
+
+	strcpy(parent, "/hey/ho/lets/");
+	path_len = strlen(parent);
+
+	parent_len = parent_path(parent, path_len);
+
+	fail_unless(strcmp(parent, expected_result) == 0, "parent of /hey/ho/lets is /hey/ho");
+	fail_unless(parent_len = expected_result_len );
+
+	strcpy(parent, "/");
+	path_len = strlen(parent);
+	parent_len = parent_path(parent, path_len);
+
+
+	fail_unless(parent_len == 0, "/ has no parents (parent_len == %d)", parent_len);
+
+	strcpy(parent, "orphan");
+	path_len = strlen(parent);
+	parent_len = parent_path(parent, path_len);
+
+	fail_unless(parent_len == 0, "orphan has no parents");
 
 }
 END_TEST

@@ -6,36 +6,65 @@
 #include <unistd.h>
 #include <execinfo.h>
 #include <stdarg.h>
+#include <sys/resource.h>
 #include <sys/time.h>
 #include "utils.h"
 
 
-//
-//  /baba/pita/vova -> /baba/pita
-
-char *parent_path(const char *path)
+double get_time(void)
 {
-	char *tc_path, *p_path;
-	size_t tc_path_len;
+    struct timeval t;
+    struct timezone tzp;
+    gettimeofday(&t, &tzp);
+    return t.tv_sec + t.tv_usec*1e-6;
+}
 
-	if ((tc_path = strdup(path)) == NULL)
-		return NULL;
+int s_strncpy(char *dest, const char *src, size_t src_len, size_t len)
+{
+	/* 
+	register size_t i;
+	
+	for (i = 0; src[i] != '\0' && i < len; i++)
+		dest[i] = src[i];
 
-	tc_path_len = strlen(tc_path);
+	dest[i] = '\0';
 
-	// if directory, get parent directory
-	if (tc_path[tc_path_len -1] == '/')
-		tc_path[tc_path_len - 1] = '\0';
+	if (i == len)
+		return 0;
 
-	p_path = strrchr(tc_path, '/');
+	
 
-	if (p_path != NULL) {
-		*(p_path++) = '\0';
-		return tc_path;
+	return 1;
+	*/
+
+	src_len++; // for '\0' char
+
+	if (src_len > len)
+		return 0;
+
+	memcpy(dest, src, src_len);
+
+	return 1;
+}
+
+size_t parent_path(char *path, size_t path_len)
+{
+	int i;
+
+	if (path_len == 0)
+		return 0;
+
+	i = path_len - 1;
+
+	while (i > 0) {
+		i--;
+		if (path[i] == '/') {
+			path[i] = '\0';
+			break;
+		}
 	}
 
-	free(tc_path);
-	return NULL;
+	return i;
 }
 
 char *leaf_file(const char *path)
@@ -53,24 +82,27 @@ char *leaf_file(const char *path)
 
 int file_exists(const char *path)
 {
-	//struct stat stbuf;
-/*	
-	if (access (path, F_OK) != -1)
+	// /hdsarchive202/tctests/tc/000/000.tc
+	//fprintf(stderr, "file_exists: %s\n", path);
+
+/* 
+	size_t slash_count = 0;
+	const char *path_p = path;
+	
+	while (*path_p != '\0')
+		if (*path_p++ == '/')
+			slash_count++;
+
+	if (slash_count == 5)
 		return 1;
+
+	return 0;
 */
 
-	int f = open(path, O_RDONLY);
+	if (access (path, F_OK) != -1)
+		return 1;
 
-	if (f < 0 )
-		return 0;
-
-	close(f);	
-	/* 
-	if (stat(path, &stbuf) != -1)
-		if (S_ISREG(stbuf.st_mode))
-			return 1;
- 	*/
-	return 1;
+	return 0;
 }
 
 int has_suffix(const char *s, const char *suffix)
