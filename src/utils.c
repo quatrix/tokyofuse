@@ -53,24 +53,11 @@ char *leaf_file(const char *path)
 
 int file_exists(const char *path)
 {
-	//struct stat stbuf;
-/*	
 	if (access (path, F_OK) != -1)
 		return 1;
-*/
 
-	int f = open(path, O_RDONLY);
+	return 0;
 
-	if (f < 0 )
-		return 0;
-
-	close(f);	
-	/* 
-	if (stat(path, &stbuf) != -1)
-		if (S_ISREG(stbuf.st_mode))
-			return 1;
- 	*/
-	return 1;
 }
 
 int has_suffix(const char *s, const char *suffix)

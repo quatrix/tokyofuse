@@ -379,13 +379,9 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 	debug("wants to read %d bytes from %s", size, path);
 	//debug("wants to read %d from %s (offset: %d)", size, path, offset);
 
-	if (is_parent_tc(path)) { 
+	fh = tokyofuse_get_tc_fh(fi);
 
-		fh = tokyofuse_get_tc_fh(fi);
-
-		if (fh == NULL)
-			return -errno;
-
+	if (fh != NULL) {
 		if (fh->value == NULL)
 			return -errno;
 
@@ -458,12 +454,9 @@ static int xmp_release(const char *path, struct fuse_file_info *fi)
 	(void) fi;
 	tc_filehandle_t *fh;	
 
-	if (is_parent_tc(path)) { 
-		fh = tokyofuse_get_tc_fh(fi);
+	fh = tokyofuse_get_tc_fh(fi);
 
-		if (fh == NULL)
-			return -errno;
-
+	if (fh != NULL) {
 		if (fh->value != NULL)
 			free(fh->value);
 
