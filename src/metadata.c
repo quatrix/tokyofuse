@@ -192,11 +192,11 @@ TC_RC metadata_lookup_path(const char *path, size_t path_len, tc_dir_meta_t **tc
 	if (tc_dir != NULL) {
 		debug("found %s in hash", path);
 
-		//if (!tc_dir_lock(tc_dir)) 
-		//	goto error;
+		if (!tc_dir_lock(tc_dir)) 
+			goto error;
 
-		if (tc_dir->initialized && __sync_fetch_and_add(&tc_dir->refcount, 1)) {
-		//	tc_dir->refcount++;
+		if (tc_dir->initialized) { 
+			tc_dir->refcount++;
 
 			debug("key %s already in metadata hash (refcount incs to %d)", path, tc_dir->refcount);
 			*tc_dir_ptr = tc_dir;
@@ -207,12 +207,12 @@ TC_RC metadata_lookup_path(const char *path, size_t path_len, tc_dir_meta_t **tc
 			rc = TC_NOT_FOUND;
 		}
 
-		//tc_dir_unlock(tc_dir);
+		tc_dir_unlock(tc_dir);
 	}
 	else 
 		rc = TC_NOT_FOUND;
 
-//error:
+error:
 
 	if (!(lock & TC_LOCK_DONT_UNLOCK))
 		metadata_unlock();
@@ -427,7 +427,6 @@ void metadata_free_unused_tc_dir(void)
 {
 	tc_dir_meta_t *tc_dir = NULL;
 	tc_dir_meta_t *tc_dir_next = NULL;
-	int r;
 
 	for (tc_dir = meta; tc_dir != NULL; tc_dir = tc_dir_next) {
 		// in case we free tc_dir
@@ -438,9 +437,8 @@ void metadata_free_unused_tc_dir(void)
 			if (tc_dir_lock(tc_dir)) {
 		#else
 		if (metadata_lock(TC_LOCK_WRITE | TC_LOCK_TRY)) {
-			//if (tc_dir_trylock(tc_dir)) {
+			if (tc_dir_trylock(tc_dir)) {
 		#endif
-			if (__sync_fetch_and_sub(&tc_dir->refcount, 1) == 0 ) { 
 				if (tc_dir->refcount ==  0) { 
 					debug("metadata_free_unused_tc_dir: refcount for %s is 0 -- freeing it", tc_dir->path);
 
@@ -454,9 +452,6 @@ void metadata_free_unused_tc_dir(void)
 				} 
 				else 
 					tc_dir_unlock(tc_dir);
-			}
-			else {
-				r = __sync_fetch_and_add(&tc_dir->refcount, 1);
 			}
 
 			metadata_unlock();

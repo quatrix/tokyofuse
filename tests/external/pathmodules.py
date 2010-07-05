@@ -1,4 +1,4 @@
-from multiprocessing import Process, Pipe
+from multiprocessing import Process, Pipe, Event
 import random
 import sys, os, errno
 import tc
@@ -132,7 +132,9 @@ class Diff:
 
 
 	def scale_test(self, forks):
-		def __bench_diff(conn, files):
+		def __bench_diff(start_now, conn, files):
+			start_now.wait()
+
 			t_res = []
 
 			for file in files:
@@ -150,14 +152,16 @@ class Diff:
 			conn.close()
 
 
-		for n_forks in [300]:
+		for n_forks in range(1, 1000, 10):
 			workers = []
+			start_now = Event()
+
 			print "starting %d concurrent forks" % (n_forks)
 
 			for forks in range(n_forks):
 				random_files = []
 
-				while len(random_files) < 500:
+				while len(random_files) < 5:
 					directory = random.choice(self.directories.keys())
 					file = random.choice(self.directories[directory])
 
@@ -167,11 +171,13 @@ class Diff:
 					random_files.append((tc_file, orig_file))
 
 				parent_conn, child_conn = Pipe()
-				p = Process(target=__bench_diff, args=(child_conn, random_files))
+				p = Process(target=__bench_diff, args=(start_now, child_conn, random_files))
 				p.start()
 
 				workers.append((p, parent_conn))
 
+			print "all forks up, setting start_now"	
+			start_now.set()
 			print "results for %d concurrent forks:" % (n_forks)
 
 
