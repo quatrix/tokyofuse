@@ -156,12 +156,12 @@ class Diff:
 			workers = []
 			start_now = Event()
 
-			print "starting %d concurrent forks" % (n_forks)
+			#print "starting %d concurrent forks" % (n_forks)
 
 			for forks in range(n_forks):
 				random_files = []
 
-				while len(random_files) < 5:
+				while len(random_files) < 10:
 					directory = random.choice(self.directories.keys())
 					file = random.choice(self.directories[directory])
 
@@ -176,9 +176,9 @@ class Diff:
 
 				workers.append((p, parent_conn))
 
-			print "all forks up, setting start_now"	
+			#print "all forks up, setting start_now"	
 			start_now.set()
-			print "results for %d concurrent forks:" % (n_forks)
+			#print "results for %d concurrent forks:" % (n_forks)
 
 
 			avg_min = []
@@ -196,8 +196,8 @@ class Diff:
 				p[0].join()
 
 
-			print "min: %0.2f (%0.2f) max: %0.2f (%0.2f) avg: %0.2f mid: %0.2f" % (min(avg_min), avg(avg_min),  max(avg_max), avg(avg_max), avg(avg_avg), avg(avg_mid))
-			print "--------------------"
+			#print "[%d] min: %0.2f (%0.2f) max: %0.2f (%0.2f) avg: %0.2f mid: %0.2f" % (n_forks, min(avg_min), avg(avg_min),  max(avg_max), avg(avg_max), avg(avg_avg), avg(avg_mid))
+			print "%d, %0.2f, %0.2f, %0.2f, %0.2f, %0.2f, %0.2f" % (n_forks, min(avg_min), avg(avg_min),  max(avg_max), avg(avg_max), avg(avg_avg), avg(avg_mid))
 
 
 	def dir_diff(self, forks):

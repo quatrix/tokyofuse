@@ -10,7 +10,7 @@ static const char const *fake_tc_file = "some_fake_tc_file.tc";
 
 START_TEST(test_to_tc_path)
 {
-	char tc_path[100];
+	char tc_path[MAX_PATH_LEN];
 
 	fail_unless(strcmp(to_tc_path("/hey/ho", strlen("/hey/ho"), tc_path), "/hey/ho.tc") == 0, "/hey/ho tc path is /hey/ho.tc");
 	fail_unless(strcmp(to_tc_path("", strlen(""), tc_path), ".tc") == 0, "empty tc path is .tc");
@@ -54,10 +54,16 @@ END_TEST
 
 START_TEST(test_is_parent_tc)
 {
-	fail_unless(is_parent_tc("some_fake_tc_file/baba", strlen("some_fake_tc_file/baba") ), "some_fake_tc_file/baba has tc parent");
-	fail_if(is_parent_tc("some_fake_tc_file/baba/pita", strlen("some_fake_tc_file/baba/pita") ), "some_fake_tc_file/baba/pita doesn't have a tc parent");
-	fail_if(is_parent_tc("some_fake_tc_file", strlen( "some_fake_tc_file" )), "some_fake_tc_file doesn't have a tc parent");
-	fail_unless(is_parent_tc(NULL, 0) == 0, "NULL path should return 0");
+
+	
+	size_t parent_len;
+	char parent[MAX_PATH_LEN];
+
+
+	fail_unless(is_parent_tc("some_fake_tc_file/baba", strlen("some_fake_tc_file/baba"), parent, &parent_len ), "some_fake_tc_file/baba has tc parent");
+	fail_if(is_parent_tc("some_fake_tc_file/baba/pita", strlen("some_fake_tc_file/baba/pita"), parent, &parent_len ), "some_fake_tc_file/baba/pita doesn't have a tc parent");
+	fail_if(is_parent_tc("some_fake_tc_file", strlen( "some_fake_tc_file" ), parent,  &parent_len), "some_fake_tc_file doesn't have a tc parent");
+	fail_unless(is_parent_tc(NULL, 0, parent, &parent_len) == 0, "NULL path should return 0");
 
 
 }

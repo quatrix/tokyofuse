@@ -173,7 +173,7 @@ START_TEST(test_metadata_get_filesize)
 	for (i = 0; i < 4; i++) {
 		sprintf(key, "%s/%s", tc_test_file, excpected_key_value[i][0]);
 
-		size = metadata_get_filesize(key, strlen(key));
+		size = metadata_get_filesize(key, strlen(key), tc_test_file, strlen(tc_test_file));
 
 		fail_unless(size == strlen(excpected_key_value[i][1]), "get size: wrong size %d (expected: %d)", size, excpected_key_value[i][1]);
 	}
@@ -181,7 +181,7 @@ START_TEST(test_metadata_get_filesize)
 	for (i = 0; i < 2; i++) {
 		sprintf(key, "%s/%s", tc_test_file2, excpected_key_value2[i][0]);
 
-		size = metadata_get_filesize(key, strlen(key));
+		size = metadata_get_filesize(key, strlen(key), tc_test_file2, strlen(tc_test_file2));
 
 		fail_unless(size == strlen(excpected_key_value2[i][1]), "(2) get size: wrong size %d (expected: %d)", size, excpected_key_value2[i][1]);
 	}
@@ -189,8 +189,8 @@ START_TEST(test_metadata_get_filesize)
 	fail_unless(tc_dir->refcount == tc_dir_refcount,  "tc_dir->refcount (%d) should be %d", tc_dir->refcount, tc_dir_refcount);
 	fail_unless(tc_dir2->refcount == tc_dir2_refcount,  "tc_dir2->refcount (%d) should be %d", tc_dir2->refcount, tc_dir2_refcount);
 
-	fail_unless(metadata_get_filesize("some path", strlen("some path")) == -1, "for non existent path return -1");
-	fail_unless(metadata_get_filesize(NULL, 0) == -1, "for NULL path return -1");
+	fail_unless(metadata_get_filesize("some path", strlen("some path"), NULL, NULL) == -1, "for non existent path return -1");
+	fail_unless(metadata_get_filesize(NULL, 0, NULL, NULL) == -1, "for NULL path return -1");
 
 }
 END_TEST
@@ -206,7 +206,7 @@ START_TEST(test_metadata_get_value)
 	for (i = 0; i < 4; i++) {
 		sprintf(key, "%s/%s", tc_test_file, excpected_key_value[i][0]);
 
-		fail_unless(metadata_get_value(key, strlen(key), &fh));
+		fail_unless(metadata_get_value(key, strlen(key), &fh, tc_test_file, strlen(tc_test_file)));
 
 		fail_unless(fh.value_len == strlen(excpected_key_value[i][1]), 
 			"get value: wrong value_len %d (excpected: %d)", fh.value_len, excpected_key_value[i][1]);
@@ -220,7 +220,7 @@ START_TEST(test_metadata_get_value)
 	for (i = 0; i < 2; i++) {
 		sprintf(key, "%s/%s", tc_test_file2, excpected_key_value2[i][0]);
 
-		fail_unless(metadata_get_value(key, strlen(key), &fh));
+		fail_unless(metadata_get_value(key, strlen(key), &fh, tc_test_file2, strlen(tc_test_file2)));
 
 		fail_unless(fh.value_len == strlen(excpected_key_value2[i][1]), 
 			"(2) get value: wrong value_len %d (excpected: %d)", fh.value_len, excpected_key_value2[i][1]);
@@ -235,9 +235,9 @@ START_TEST(test_metadata_get_value)
 	fail_unless(tc_dir->refcount == tc_dir_refcount,  "tc_dir->refcount (%d) should be %d", tc_dir->refcount, tc_dir_refcount);
 	fail_unless(tc_dir2->refcount == tc_dir2_refcount,  "tc_dir2->refcount (%d) should be %d", tc_dir2->refcount, tc_dir2_refcount);
 
-	fail_unless(metadata_get_value("some path", strlen("some path"), &fh) == 0, "for non existent path return 0");
-	fail_unless(metadata_get_value(NULL, 0,  &fh) == 0, "for NULL path return 0");
-	fail_unless(metadata_get_value("tc_backend_test/foo", strlen("tc_backend_test/foo"), NULL) == 0, "for NULL fh return 0");
+	fail_unless(metadata_get_value("some path", strlen("some path"), &fh, NULL, NULL) == 0, "for non existent path return 0");
+	fail_unless(metadata_get_value(NULL, 0,  &fh, NULL, NULL) == 0, "for NULL path return 0");
+	fail_unless(metadata_get_value("tc_backend_test/foo", strlen("tc_backend_test/foo"), NULL, NULL, NULL) == 0, "for NULL fh return 0");
 
 }
 END_TEST
@@ -393,7 +393,7 @@ START_TEST(test_metadata_free_unused_tc_dir)
 	for (i = 0; i < 2; i++) {
 		sprintf(key, "%s/%s", tc_test_file2, excpected_key_value2[i][0]);
 
-		fail_unless(metadata_get_value(key, strlen(key), &fh));
+		fail_unless(metadata_get_value(key, strlen(key), &fh, tc_test_file2, strlen(tc_test_file2)));
 
 		fail_unless(fh.value_len == strlen(excpected_key_value2[i][1]), 
 			"get value: wrong value_len %d (excpected: %d)", fh.value_len, excpected_key_value2[i][1]);

@@ -41,8 +41,8 @@ int metadata_init(void);
 
 tc_dir_meta_t *metadata_get_tc(const char *, size_t);
 int metadata_release_path(tc_dir_meta_t *);
-int metadata_get_filesize(const char *, size_t);
-int metadata_get_value(const char *, size_t, tc_filehandle_t *);
+int metadata_get_filesize(const char *, size_t , char *, size_t );
+int metadata_get_value(const char *, size_t , tc_filehandle_t *, char *, size_t );
 
 void metadata_free_unused_tc_dir(void);
 

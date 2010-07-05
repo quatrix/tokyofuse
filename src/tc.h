@@ -9,7 +9,7 @@
 void tc_dir_stat(struct stat *);
 void tc_file_stat(struct stat *, size_t);
 int is_tc(const char *, size_t);
-int is_parent_tc(const char *, size_t);
+int is_parent_tc(const char *, size_t , char *, size_t *);
 char *to_tc_path(const char *, size_t, char *);
 
 #endif

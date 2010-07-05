@@ -12,7 +12,7 @@
 #define error(format, ...) fprintf(stderr, format "\n", ##__VA_ARGS__)
 
 size_t parent_path(char *, size_t );
-char *leaf_file(const char *);
+char *leaf_file(const char *, size_t);
 int file_exists(const char *);
 int has_suffix(const char *, const char *);
 char *remove_suffix(char *, const char *);

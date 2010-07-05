@@ -67,46 +67,19 @@ static int xmp_getattr(const char *path, struct stat *stbuf)
 
 
 	size_t path_len = strlen(path);
-//	double t0, td;
-	
+	size_t parent_len;
+	char parent[MAX_PATH_LEN];
 
-//	t0 = get_time();
-
-	if (is_parent_tc(path, path_len)) {
+	if (is_parent_tc(path, path_len, parent, &parent_len)) {
 		debug("%s has tc parent", path);
 
-/* 
-		td = (get_time() - t0) * 1000;
-		if (td > 100) 
-			error("getattr (is_parent_tc) took: %0.3f msec", td);
-		t0 = get_time();
-*/
-
-		tc_file_stat(stbuf, metadata_get_filesize(path, path_len));
-/* 
-		td = (get_time() - t0) * 1000;
-		if (td > 100) 
-			error("getattr (metadata_get_filesize) took: %0.3f msec", td);
-		t0 = get_time();
-*/
+		tc_file_stat(stbuf, metadata_get_filesize(path, path_len, parent, parent_len));
 	}
 	else if (is_tc(path, path_len)) {
 		tc_dir_stat(stbuf);
-/*  
-		td = (get_time() - t0) * 1000;
-		if (td > 100) 
-			error("getattr (is_tc) took: %0.3f msec", td);
-		t0 = get_time();
-*/
 	}
 	else if (has_suffix(path, ".tc")) {
 		tc_dir_stat(stbuf);
-/* 
-		td = (get_time() - t0) * 1000;
-		if (td > 100) 
-			error("getattr (has_suffix) took: %0.3f msec", td);
-		t0 = get_time();
-*/
 	}
 	else 
 		if (lstat(path, stbuf) == -1)
@@ -388,13 +361,11 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 	debug("wants to open %s", path);
 
 	size_t path_len = strlen(path);
-//	double t0, td;
-	
 
+	size_t parent_len;
+	char parent[MAX_PATH_LEN];
 
-	//t0 = get_time();
-
-	if (is_parent_tc(path, path_len)) { 
+	if (is_parent_tc(path, path_len, parent, &parent_len)) {
 		debug("%s has a tc parent", path);
 
 		tc_filehandle_t *fh	= (tc_filehandle_t *)malloc(sizeof(tc_filehandle_t));
@@ -404,9 +375,7 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 			return -errno;
 		}
 
-		//fh->value = metadata_get_value(path, &fh->value_len);
-
-		if (!metadata_get_value(path, path_len, fh)) {
+		if (!metadata_get_value(path, path_len, fh, parent, parent_len)) {
 			debug("metadata_get_value failed");
 			free(fh);
 			return -errno;
@@ -422,12 +391,7 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 
 		close(res);
 	}
-/* 
-	td = (get_time() - t0) * 1000;
 
-	if (td > 100) 
-		error("xmp_open took: %0.3f msec", td);
-*/
 	return 0;
 }
 

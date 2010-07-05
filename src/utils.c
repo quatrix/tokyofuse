@@ -67,14 +67,14 @@ size_t parent_path(char *path, size_t path_len)
 	return i;
 }
 
-char *leaf_file(const char *path)
+char *leaf_file(const char *path, size_t path_len)
 {
 	char *l = NULL;
 
 	if (path == NULL)
 		return NULL;
 	
-	if ((l = strrchr(path, '/')) != NULL)
+	if ((l = memrchr(path, '/', path_len)) != NULL)
 		return l+1;
 
 	return NULL;

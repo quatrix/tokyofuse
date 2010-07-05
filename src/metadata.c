@@ -12,7 +12,6 @@
 #include "tc.h"
 
 #define LOCK_DEBUG 0
-#define BLOCK_CLEANUP 0
 
 static tc_dir_meta_t *meta = NULL;
 static pthread_rwlock_t meta_lock;
@@ -221,19 +220,19 @@ error:
 }
 
 
-int metadata_get_filesize(const char *path, size_t path_len)
+int metadata_get_filesize(const char *path, size_t path_len, char *parent, size_t parent_len)
 {
 	int size;
-	char parent[MAX_PATH_LEN];
+	//char parent[MAX_PATH_LEN];
 	char *leaf = NULL;
-	size_t parent_len;
+//	size_t parent_len;
 	tc_dir_meta_t *tc_dir;
 
 	if (path == NULL) {
 		error("metadata_get_filesize: null path");
 		return -1;
 	}
-
+/* 
 	if (!s_strncpy(parent, path, path_len, MAX_PATH_LEN)) {
 		error("safe copy failed, bah");
 		return -1;
@@ -245,8 +244,8 @@ int metadata_get_filesize(const char *path, size_t path_len)
 		error("metadata_get_filesize: null parent");
 		return -1;
 	}
-
-	if ((leaf = leaf_file(path)) == NULL) {
+*/
+	if ((leaf = leaf_file(path, path_len)) == NULL) {
 		error("metadata_get_filesize: null leaf");
 		return -1;
 	}
@@ -269,14 +268,14 @@ int metadata_get_filesize(const char *path, size_t path_len)
 
 
 
-int metadata_get_value(const char *path, size_t path_len, tc_filehandle_t *fh)
+int metadata_get_value(const char *path, size_t path_len, tc_filehandle_t *fh, char *parent, size_t parent_len)
 {
 	tc_dir_meta_t *tc_dir;
 	char *value = NULL;
-	char parent[MAX_PATH_LEN];
+	//char parent[MAX_PATH_LEN];
 	char *leaf = NULL;
 	int value_len = 0;
-	size_t parent_len;
+	//size_t parent_len;
 
 	if (path == NULL) {
 		error("metadata_get_value: null path");
@@ -287,7 +286,7 @@ int metadata_get_value(const char *path, size_t path_len, tc_filehandle_t *fh)
 		error("metadata_get_value: null fh");
 		return 0;
 	}
-
+/* 
 	if (!s_strncpy(parent, path, path_len, MAX_PATH_LEN)) {
 		error("safe copy failed, bah");
 		return 0;
@@ -299,8 +298,8 @@ int metadata_get_value(const char *path, size_t path_len, tc_filehandle_t *fh)
 		error("metadata_get_value: no parent");
 		return 0;
 	}
-
-	if ((leaf = leaf_file(path)) == NULL) {
+*/
+	if ((leaf = leaf_file(path, path_len)) == NULL) {
 		error("metadata_get_value: null leaf");
 		return 0;
 	}
@@ -432,13 +431,8 @@ void metadata_free_unused_tc_dir(void)
 		// in case we free tc_dir
 		tc_dir_next = tc_dir->hh.next;
 		
-		#if BLOCK_CLEANUP
-		if (metadata_lock(TC_LOCK_WRITE)) {
-			if (tc_dir_lock(tc_dir)) {
-		#else
 		if (metadata_lock(TC_LOCK_WRITE | TC_LOCK_TRY)) {
 			if (tc_dir_trylock(tc_dir)) {
-		#endif
 				if (tc_dir->refcount ==  0) { 
 					debug("metadata_free_unused_tc_dir: refcount for %s is 0 -- freeing it", tc_dir->path);
 

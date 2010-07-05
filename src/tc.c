@@ -66,10 +66,10 @@ int is_tc(const char *path, size_t path_len)
 	return 0;
 }
 
-int is_parent_tc(const char *path, size_t path_len)
+int is_parent_tc(const char *path, size_t path_len, char *parent, size_t *parent_len)
 {
-	char parent[MAX_PATH_LEN];
-	size_t parent_len = 0;
+	//char parent[MAX_PATH_LEN];
+	//size_t parent_len = 0;
 	
 	if (path == NULL)
 		return 0;
@@ -79,12 +79,12 @@ int is_parent_tc(const char *path, size_t path_len)
 		return 0;
 	}
 
-	parent_len = parent_path(parent, path_len);
+	*parent_len = parent_path(parent, path_len);
 
-	if (!parent_len)
+	if (!(*parent_len))
 		return 0;
 
-	if (is_tc(parent, parent_len))
+	if (is_tc(parent, *parent_len))
 		return 1;
 
 	return 0;

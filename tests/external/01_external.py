@@ -12,7 +12,7 @@ opts.add_option("--diff_forks",     type="int",    dest="diff_forks",     defaul
 opts.add_option("--tc_mount",       type="string", dest="tc_fuse_mount",  default="/tmp/tcfuse"       )
 opts.add_option("--tc_created",     type="string", dest="tc_created",     default="/tmp/tc.created"   )
 opts.add_option("--num_of_files",   type="int",    dest="num_of_files",   default=1024*8              )
-opts.add_option("--max_filesize",   type="int",    dest="max_filessize",  default=1024*5              )
+opts.add_option("--max_filesize",   type="int",    dest="max_filessize",  default=1024*8              )
 
 (options, args) = opts.parse_args(sys.argv)
 
