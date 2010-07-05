@@ -111,15 +111,15 @@ START_TEST(test_tc_get_filesize)
 	int i, size;
 	int failures = 0 ;
 	for (i = 0; i < 4; i++) {
-		size = tc_get_filesize(hdb, tc_test_file, excpected_key_value[i][0]);
+		size = tc_get_filesize(hdb, tc_test_file, excpected_key_value[i][0], strlen(excpected_key_value[i][0]) );
 		if (size != strlen(excpected_key_value[i][1]))
 			failures++;
 	}
 
 	fail_unless(failures == 0, "all sizes should be as expected");
-	fail_unless(tc_get_filesize(hdb, tc_test_file, "no such key") == -1, "non existent keys should return -1");
-	fail_unless(tc_get_filesize(hdb, tc_test_file, NULL) == -1, "NULL keys should return -1");
-	fail_unless(tc_get_filesize(NULL, tc_test_file, "liron") == -1, "NULL hdb should return -1");
+	fail_unless(tc_get_filesize(hdb, tc_test_file, "no such key", strlen("no such key")) == -1, "non existent keys should return -1");
+	fail_unless(tc_get_filesize(hdb, tc_test_file, NULL, 0) == -1, "NULL keys should return -1");
+	fail_unless(tc_get_filesize(NULL, tc_test_file, "liron", strlen("liron")) == -1, "NULL hdb should return -1");
 }
 END_TEST
 
@@ -129,7 +129,7 @@ START_TEST(test_tc_get_value)
 	char *value;
 	int failures = 0 ;
 	for (i = 0; i < 4; i++) {
-		value = tc_get_value(hdb, tc_test_file, excpected_key_value[i][0], &value_len);
+		value = tc_get_value(hdb, tc_test_file, excpected_key_value[i][0], strlen( excpected_key_value[i][0]), &value_len);
 		if (strncmp(value, excpected_key_value[i][1], strlen(excpected_key_value[i][1]) == 0))
 			failures++;
 
@@ -138,10 +138,10 @@ START_TEST(test_tc_get_value)
 	}
 
 	fail_unless(failures == 0, "all sizes should be as expected");
-	fail_unless(tc_get_value(hdb, tc_test_file, "no such key", &value_len) == NULL, "non existent keys should return null");
-	fail_unless(tc_get_value(hdb, tc_test_file, NULL, &value_len) == NULL, "null keys should return null");
-	fail_unless(tc_get_value(hdb, tc_test_file, "liron", NULL) == NULL, "null value_len should return null");
-	fail_unless(tc_get_value(NULL, tc_test_file, "liron", &value_len) == NULL, "null hdb should return null");
+	fail_unless(tc_get_value(hdb, tc_test_file, "no such key", strlen("no such key"), &value_len) == NULL, "non existent keys should return null");
+	fail_unless(tc_get_value(hdb, tc_test_file, NULL, 0, &value_len) == NULL, "null keys should return null");
+	fail_unless(tc_get_value(hdb, tc_test_file, "liron", strlen("liron"), NULL) == NULL, "null value_len should return null");
+	fail_unless(tc_get_value(NULL, tc_test_file, "liron", strlen("liron"), &value_len) == NULL, "null hdb should return null");
 }
 END_TEST
 

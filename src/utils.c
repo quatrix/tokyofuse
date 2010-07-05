@@ -67,15 +67,17 @@ size_t parent_path(char *path, size_t path_len)
 	return i;
 }
 
-char *leaf_file(const char *path, size_t path_len)
+char *leaf_file(const char *path, size_t path_len, size_t *leaf_len)
 {
 	char *l = NULL;
 
 	if (path == NULL)
 		return NULL;
 	
-	if ((l = memrchr(path, '/', path_len)) != NULL)
+	if ((l = memrchr(path, '/', path_len)) != NULL) {
+		*leaf_len = path_len - (l - path) - 1;
 		return l+1;
+	}
 
 	return NULL;
 }

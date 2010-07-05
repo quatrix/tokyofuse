@@ -64,11 +64,19 @@ END_TEST
 
 START_TEST(test_leaf_file)
 {
-	fail_unless(strcmp(leaf_file("/hey/ho", strlen("/hey/ho")), "ho") == 0, "leaf of /hey/ho is ho");
-	fail_unless(strcmp(leaf_file("hey/ho", strlen("hey/ho")), "ho") == 0, "leaf of /hey/ho is ho");
-	fail_unless(strcmp(leaf_file("/", strlen("/")), "") == 0, "leaf of /hey/ho is ho");
-	fail_unless(leaf_file("heya", strlen("heya")) == NULL, "leaf of string w/o '/' should return NULL");
-	fail_unless(leaf_file(NULL, 0) == NULL, "leaf of NULL should return NULL");
+	size_t leaf_len;
+
+	fail_unless(strcmp(leaf_file("/hey/ho", strlen("/hey/ho"), &leaf_len), "ho") == 0, "leaf of /hey/ho is ho");
+	fail_unless(leaf_len == strlen("ho"), "leaf_len == %d but it should be %d", leaf_len, strlen("ho"));
+
+	fail_unless(strcmp(leaf_file("hey/ho", strlen("hey/ho"), &leaf_len), "ho") == 0, "leaf of /hey/ho is ho");
+	fail_unless(leaf_len == strlen("ho"), "leaf_len == %d but it should be %d", leaf_len, strlen("ho"));
+
+	fail_unless(strcmp(leaf_file("/", strlen("/"), &leaf_len), "") == 0, "leaf of /hey/ho is ho");
+	fail_unless(leaf_len == strlen(""), "leaf_len == %d but it should be %d", leaf_len, strlen(""));
+
+	fail_unless(leaf_file("heya", strlen("heya"), &leaf_len) == NULL, "leaf of string w/o '/' should return NULL");
+	fail_unless(leaf_file(NULL, 0, &leaf_len) == NULL, "leaf of NULL should return NULL");
 }
 END_TEST
 

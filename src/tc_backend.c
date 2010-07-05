@@ -71,12 +71,11 @@ char *tc_get_next(TCHDB *hdb, const char *path, char *last_key,
 	return current_key;
 }
 
-int tc_get_filesize(TCHDB *hdb, const char *path, const char *key)
+int tc_get_filesize(TCHDB *hdb, const char *path, const char *key, size_t key_len)
 {
 	if (key == NULL || hdb == NULL)
 		return -1;
 
-	size_t key_len = strlen(key);
 	int size;
 
 	TC_RETRY_LOOP(hdb, path, (size = tchdbvsiz(hdb, key, key_len)) != -1, break);
@@ -84,12 +83,11 @@ int tc_get_filesize(TCHDB *hdb, const char *path, const char *key)
 	return size;
 }
 
-char *tc_get_value(TCHDB *hdb, const char *path,  const char *key, int *value_len)
+char *tc_get_value(TCHDB *hdb, const char *path,  const char *key, size_t key_len, int *value_len)
 {
 	if (key == NULL || value_len == NULL || hdb == NULL)
 		return NULL;
 
-	size_t key_len = strlen(key);
 	char *value;
 
 	TC_RETRY_LOOP(hdb, path, ( value = tchdbget(hdb, key, key_len, value_len) ) != NULL, break);

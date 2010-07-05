@@ -245,7 +245,10 @@ int metadata_get_filesize(const char *path, size_t path_len, char *parent, size_
 		return -1;
 	}
 */
-	if ((leaf = leaf_file(path, path_len)) == NULL) {
+
+	size_t leaf_len;
+
+	if ((leaf = leaf_file(path, path_len, &leaf_len)) == NULL) {
 		error("metadata_get_filesize: null leaf");
 		return -1;
 	}
@@ -257,7 +260,7 @@ int metadata_get_filesize(const char *path, size_t path_len, char *parent, size_
 	if (tc_dir == NULL)
 		return -1;
 
-	size = tc_get_filesize(tc_dir->hdb, tc_dir->path, leaf);
+	size = tc_get_filesize(tc_dir->hdb, tc_dir->path, leaf, leaf_len);
 
 	if (!tc_dir_dec_refcount(tc_dir))
 		return -1;
@@ -299,7 +302,10 @@ int metadata_get_value(const char *path, size_t path_len, tc_filehandle_t *fh, c
 		return 0;
 	}
 */
-	if ((leaf = leaf_file(path, path_len)) == NULL) {
+
+	size_t leaf_len;
+
+	if ((leaf = leaf_file(path, path_len, &leaf_len)) == NULL) {
 		error("metadata_get_value: null leaf");
 		return 0;
 	}
@@ -311,7 +317,7 @@ int metadata_get_value(const char *path, size_t path_len, tc_filehandle_t *fh, c
 	if (tc_dir == NULL)
 		return 0;
 
-	if ((value = tc_get_value(tc_dir->hdb, tc_dir->path, leaf, &value_len)) == NULL) {
+	if ((value = tc_get_value(tc_dir->hdb, tc_dir->path, leaf, leaf_len, &value_len)) == NULL) {
 		tc_dir_dec_refcount(tc_dir);
 		return 0;
 	}
