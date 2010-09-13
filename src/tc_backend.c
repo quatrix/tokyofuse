@@ -35,6 +35,11 @@ TCHDB *tc_open(const char *path) {
 		return NULL;
 	}
 
+	if (!tchdbsetxmsiz(hdb, -1)) { 
+		error("failed to set extra mmap size");
+		return NULL;
+	}
+
 
 	debug("opening hdb (%s)", path);
 

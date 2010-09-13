@@ -138,13 +138,14 @@ class Diff:
 			t_res = []
 
 			for file in files:
-				t0 = time.time()
+				for i in range(10):
+					t0 = time.time()
 
-				#print "%s %s" % (file[0], file[1])
-				if filecmp.cmp(file[0], file[1], shallow = False) == False:
-					raise DiffError("%s != %s" % (file[0], file[1]))
+					#print "%s %s" % (file[0], file[1])
+					if filecmp.cmp(file[0], file[1], shallow = False) == False:
+						raise DiffError("%s != %s" % (file[0], file[1]))
 
-				t_res.append((time.time() - t0) * 1000.0)
+					t_res.append((time.time() - t0) * 1000.0)
 
 			t_res.sort()
 			
@@ -152,7 +153,9 @@ class Diff:
 			conn.close()
 
 
-		for n_forks in range(1, 1000, 10):
+		#for n_forks in range(1, forks, 10):
+		while True:
+			n_forks = 1000;
 			workers = []
 			start_now = Event()
 
@@ -161,7 +164,7 @@ class Diff:
 			for forks in range(n_forks):
 				random_files = []
 
-				while len(random_files) < 10:
+				while len(random_files) < 5:
 					directory = random.choice(self.directories.keys())
 					file = random.choice(self.directories[directory])
 

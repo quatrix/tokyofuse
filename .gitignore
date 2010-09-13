@@ -4,6 +4,8 @@
 *.o
 *.gcda
 *.gcno
+*.pyc
+callgrind.out.*
 gmon.out
 testsuite
 tokyofuse
