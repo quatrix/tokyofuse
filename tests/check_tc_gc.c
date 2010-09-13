@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <unistd.h>
 #include "tc_gc.h"
 
 #define GC_SLEEP 1
@@ -10,7 +11,7 @@
 volatile static int counter = 0;
 
 // mocked 
-int metadata_free_unused_tc_dir(void)
+void metadata_free_unused_tc_dir(void)
 {
 	counter++;
 }

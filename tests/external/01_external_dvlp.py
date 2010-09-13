@@ -12,7 +12,7 @@ opts.add_option("--diff_forks",     type="int",    dest="diff_forks",     defaul
 opts.add_option("--tc_mount",       type="string", dest="tc_fuse_mount",  default="/tmp/tcfuse"       )
 opts.add_option("--tc_created",     type="string", dest="tc_created",     default="/tmp/tc.created"   )
 opts.add_option("--num_of_files",   type="int",    dest="num_of_files",   default=1024*8              )
-opts.add_option("--max_filesize",   type="int",    dest="max_filessize",  default=1024*8              )
+opts.add_option("--max_filesize",   type="int",    dest="max_filessize",  default=1024*5              )
 
 (options, args) = opts.parse_args(sys.argv)
 
@@ -54,11 +54,12 @@ class TokyoFuseTest(unittest.TestCase):
 		print "%s -o modules=subdir,subdir=%s %s" % (TC_FUSE_BINARY, TC_PREFIX, TC_FUSE_MOUNT)
 		self.setup_workdirs()
 
-		os.system("fusermount -u %s &>/dev/null" % TC_FUSE_MOUNT)
-		self.assertFalse(os.system("mkdir -p %s" % TC_FUSE_MOUNT))
-		self.assertFalse(os.system("%s -o modules=subdir,subdir=%s %s" % (TC_FUSE_BINARY, TC_PREFIX, TC_FUSE_MOUNT)))
+		#os.system("fusermount -u %s &>/dev/null" % TC_FUSE_MOUNT)
+		#self.assertFalse(os.system("mkdir -p %s" % TC_FUSE_MOUNT))
+		#self.assertFalse(os.system("%s -o modules=subdir,subdir=%s %s" % (TC_FUSE_BINARY, TC_PREFIX, TC_FUSE_MOUNT)))
 
 	def tearDown(self):
+		return
 		self.assertFalse(os.system("fusermount -u %s" % TC_FUSE_MOUNT))
 
 
@@ -68,7 +69,7 @@ class TokyoFuseTest(unittest.TestCase):
 			self.range.run(self.diff)
 
 			print "running forked diff test"
-			self.diff.dir_diff(DIFF_FORKS) 
+			self.diff.scale_test(DIFF_FORKS) 
 		except DiffError, e:
 			self.fail(e)
 			

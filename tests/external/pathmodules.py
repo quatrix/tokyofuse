@@ -1,9 +1,15 @@
-from multiprocessing import Process, Pipe
+from multiprocessing import Process, Pipe, Event
 import random
 import sys, os, errno
 import tc
 import filecmp
 import time
+
+def avg(l):
+	return sum(l) / float(len(l))
+
+def mid(l):
+	return l[len(l) / 2]
 
 class CreateDirectory:
 	def __init__(self, prefix):
@@ -124,11 +130,81 @@ class Diff:
 		except KeyError:
 			self.directories[path.parent] = [path.filename]
 
-	
+
+	def scale_test(self, forks):
+		def __bench_diff(start_now, conn, files):
+			start_now.wait()
+
+			t_res = []
+
+			for file in files:
+				for i in range(10):
+					t0 = time.time()
+
+					#print "%s %s" % (file[0], file[1])
+					if filecmp.cmp(file[0], file[1], shallow = False) == False:
+						raise DiffError("%s != %s" % (file[0], file[1]))
+
+					t_res.append((time.time() - t0) * 1000.0)
+
+			t_res.sort()
+			
+			conn.send((t_res[0], t_res[-1], avg(t_res), mid(t_res)))
+			conn.close()
+
+
+		#for n_forks in range(1, forks, 10):
+		while True:
+			n_forks = 1000;
+			workers = []
+			start_now = Event()
+
+			#print "starting %d concurrent forks" % (n_forks)
+
+			for forks in range(n_forks):
+				random_files = []
+
+				while len(random_files) < 5:
+					directory = random.choice(self.directories.keys())
+					file = random.choice(self.directories[directory])
+
+					tc_file= self.tc_prefix + directory + '/' + file
+					orig_file = self.file_prefix + directory + '/' + file
+
+					random_files.append((tc_file, orig_file))
+
+				parent_conn, child_conn = Pipe()
+				p = Process(target=__bench_diff, args=(start_now, child_conn, random_files))
+				p.start()
+
+				workers.append((p, parent_conn))
+
+			#print "all forks up, setting start_now"	
+			start_now.set()
+			#print "results for %d concurrent forks:" % (n_forks)
+
+
+			avg_min = []
+			avg_max = []
+			avg_avg = []
+			avg_mid = []
+
+			for p in workers:
+				res = p[1].recv()
+				avg_min.append(res[0])
+				avg_max.append(res[1])
+				avg_avg.append(res[2])
+				avg_mid.append(res[3])
+
+				p[0].join()
+
+
+			#print "[%d] min: %0.2f (%0.2f) max: %0.2f (%0.2f) avg: %0.2f mid: %0.2f" % (n_forks, min(avg_min), avg(avg_min),  max(avg_max), avg(avg_max), avg(avg_avg), avg(avg_mid))
+			print "%d, %0.2f, %0.2f, %0.2f, %0.2f, %0.2f, %0.2f" % (n_forks, min(avg_min), avg(avg_min),  max(avg_max), avg(avg_max), avg(avg_avg), avg(avg_mid))
+
 
 	def dir_diff(self, forks):
 		workers = []
-		results = []
 
 		def __dir_diff(conn, dir_a, dir_b, files):
 			print "starting dir diff between %s and %s" % (dir_a, dir_b)
@@ -191,4 +267,3 @@ class Diff:
 
 			p[0].join()
 
-		return results

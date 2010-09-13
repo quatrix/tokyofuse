@@ -1,7 +1,7 @@
 TESTS = check_utils check_tc check_tc_backend check_tc_gc check_tc_dir check_metadata check_external
 check_PROGRAMS = check_utils check_tc check_tc_backend check_tc_gc check_tc_dir check_metadata check_external
 
-AM_CFLAGS = -I../src
+AM_CFLAGS = -D_GNU_SOURCE -Wall -Werror -I../src
 src_dir = $(top_builddir)/src
 
 check_utils_SOURCES = check_utils.c $(src_dir)/utils.h $(src_dir)/utils.c

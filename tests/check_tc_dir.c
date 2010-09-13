@@ -1,6 +1,7 @@
 #include <check.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <pthread.h>
 #include <sys/time.h>
 #include "tc_dir.h"
@@ -35,15 +36,19 @@ int tc_close(void *hdb, const char *path)
 
 START_TEST(test_tc_dir_allocate)
 {
-	fail_unless(tc_dir_allocate(NULL) == NULL, "allocating with null path should return null");
+	fail_unless(tc_dir_allocate(NULL, 0) == NULL, "allocating with null path should return null");
 
-	tc_dir = tc_dir_allocate(tc_test_file);
-	tc_dir_broken = tc_dir_allocate(fake_tc_file);
+
+	size_t tc_test_file_len = strlen(tc_test_file);
+
+	tc_dir = tc_dir_allocate(tc_test_file, tc_test_file_len);
+	tc_dir_broken = tc_dir_allocate(fake_tc_file, strlen(fake_tc_file));
 
 	fail_if(tc_dir == NULL, "tc_dir should be allocated");
 	fail_if(tc_dir_broken == NULL, "tc_dir_broken should be allocated");
 
 	fail_unless(strcmp(tc_dir->path, tc_test_file) == 0, "%s should be %s", tc_dir->path, tc_test_file);
+	fail_unless(tc_dir->path_len == tc_test_file_len, "%s path_len should %d but it's %d", tc_dir->path, tc_test_file_len, tc_dir->path_len);
 	fail_unless(strcmp(tc_dir_broken->path, fake_tc_file) == 0, "%s should be %s", tc_dir_broken->path, fake_tc_file);
 
 	fail_unless(tc_dir->initialized == 0, "shouldn't be initialized");

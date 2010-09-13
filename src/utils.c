@@ -6,47 +6,78 @@
 #include <unistd.h>
 #include <execinfo.h>
 #include <stdarg.h>
+#include <sys/resource.h>
 #include <sys/time.h>
 #include "utils.h"
 
 
-//
-//  /baba/pita/vova -> /baba/pita
-
-char *parent_path(const char *path)
+double get_time(void)
 {
-	char *tc_path, *p_path;
-	size_t tc_path_len;
-
-	if ((tc_path = strdup(path)) == NULL)
-		return NULL;
-
-	tc_path_len = strlen(tc_path);
-
-	// if directory, get parent directory
-	if (tc_path[tc_path_len -1] == '/')
-		tc_path[tc_path_len - 1] = '\0';
-
-	p_path = strrchr(tc_path, '/');
-
-	if (p_path != NULL) {
-		*(p_path++) = '\0';
-		return tc_path;
-	}
-
-	free(tc_path);
-	return NULL;
+    struct timeval t;
+    struct timezone tzp;
+    gettimeofday(&t, &tzp);
+    return t.tv_sec + t.tv_usec*1e-6;
 }
 
-char *leaf_file(const char *path)
+int s_strncpy(char *dest, const char *src, size_t src_len, size_t len)
+{
+	/* 
+	register size_t i;
+	
+	for (i = 0; src[i] != '\0' && i < len; i++)
+		dest[i] = src[i];
+
+	dest[i] = '\0';
+
+	if (i == len)
+		return 0;
+
+	
+
+	return 1;
+	*/
+
+	src_len++; // for '\0' char
+
+	if (src_len > len)
+		return 0;
+
+	memcpy(dest, src, src_len);
+
+	return 1;
+}
+
+size_t parent_path(char *path, size_t path_len)
+{
+	int i;
+
+	if (path_len == 0)
+		return 0;
+
+	i = path_len - 1;
+
+	while (i > 0) {
+		i--;
+		if (path[i] == '/') {
+			path[i] = '\0';
+			break;
+		}
+	}
+
+	return i;
+}
+
+char *leaf_file(const char *path, size_t path_len, size_t *leaf_len)
 {
 	char *l = NULL;
 
 	if (path == NULL)
 		return NULL;
 	
-	if ((l = strrchr(path, '/')) != NULL)
+	if ((l = memrchr(path, '/', path_len)) != NULL) {
+		*leaf_len = path_len - (l - path) - 1;
 		return l+1;
+	}
 
 	return NULL;
 }
@@ -57,7 +88,6 @@ int file_exists(const char *path)
 		return 1;
 
 	return 0;
-
 }
 
 int has_suffix(const char *s, const char *suffix)
